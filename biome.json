@@ -9,7 +9,9 @@
       "**/*.json",
       "**/*.js",
       "!**/dist",
-      "!**/node_modules"
+      "!**/node_modules",
+      "!CHANGELOG.md",
+      "!public/models/**"
     ]
   },
   "formatter": {

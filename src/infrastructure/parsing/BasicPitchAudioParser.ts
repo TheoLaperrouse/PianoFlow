@@ -9,22 +9,32 @@ const ONSET_THRESHOLD = 0.5;
 const FRAME_THRESHOLD = 0.3;
 const MIN_NOTE_LENGTH = 5;
 
+interface BasicPitchInstance {
+  evaluateModel(
+    samples: Float32Array,
+    onProgress: (frames: number[][], onsets: number[][], contours: number[][]) => void,
+    onComplete: () => void,
+  ): Promise<void>;
+}
+
+interface NoteEvent {
+  pitchMidi: number;
+  startTimeSeconds: number;
+  durationSeconds: number;
+  amplitude: number;
+}
+
 interface BasicPitchModule {
-  // biome-ignore lint/suspicious/noExplicitAny: external lib without TS types we control
-  BasicPitch: new (
-    modelUrl: string,
-  ) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: external lib
-  outputToNotesPoly: (...args: any[]) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: external lib
-  addPitchBendsToNoteEvents: (...args: any[]) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: external lib
-  noteFramesToTime: (notes: any) => Array<{
-    pitchMidi: number;
-    startTimeSeconds: number;
-    durationSeconds: number;
-    amplitude: number;
-  }>;
+  BasicPitch: new (modelUrl: string) => BasicPitchInstance;
+  outputToNotesPoly: (
+    frames: number[][],
+    onsets: number[][],
+    onsetThresh: number,
+    frameThresh: number,
+    minNoteLen: number,
+  ) => unknown;
+  addPitchBendsToNoteEvents: (contours: number[][], notes: unknown) => unknown;
+  noteFramesToTime: (notes: unknown) => NoteEvent[];
 }
 
 /**
@@ -38,12 +48,11 @@ interface BasicPitchModule {
  */
 export class BasicPitchAudioParser implements SongParserPort {
   private readonly modelUrl: string;
-  // biome-ignore lint/suspicious/noExplicitAny: see BasicPitchModule
-  private model: any | null = null;
+  private model: BasicPitchInstance | null = null;
   private moduleP: Promise<BasicPitchModule> | null = null;
 
-  constructor(modelUrl = '/models/basic-pitch/model.json') {
-    this.modelUrl = modelUrl;
+  constructor(modelUrl?: string) {
+    this.modelUrl = modelUrl ?? `${import.meta.env.BASE_URL}models/basic-pitch/model.json`;
   }
 
   async parse(file: File): Promise<Song> {
@@ -59,8 +68,7 @@ export class BasicPitchAudioParser implements SongParserPort {
 
     await this.model.evaluateModel(
       audioBuffer.getChannelData(0),
-      // biome-ignore lint/suspicious/noExplicitAny: lib callback signature
-      (f: any, o: any, c: any) => {
+      (f, o, c) => {
         frames.push(...f);
         onsets.push(...o);
         contours.push(...c);

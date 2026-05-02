@@ -16,8 +16,9 @@ export class BundledSongLibrary implements SongLibraryPort {
   private readonly baseUrl: string;
   private cache: Manifest | null = null;
 
-  constructor(baseUrl = 'library') {
-    this.baseUrl = baseUrl.replace(/\/$/, '');
+  constructor(baseUrl?: string) {
+    const resolved = baseUrl ?? `${import.meta.env.BASE_URL}library`;
+    this.baseUrl = resolved.replace(/\/$/, '');
   }
 
   async list(): Promise<LibraryEntry[]> {

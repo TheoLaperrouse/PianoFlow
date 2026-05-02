@@ -2,78 +2,104 @@
 
 Application web pour apprendre le piano **sans lire de partition**, façon « tutoriel YouTube » : les notes descendent depuis le haut de l'écran et viennent s'allumer sur les touches du clavier — bleu pour la main gauche, vert pour la main droite.
 
-Inspiré de Synthesia / piano tutorials, conçu pour les débutants qui veulent jouer rapidement sans passer par le solfège.
+## ✨ Fonctionnalités
 
-## ✨ Fonctionnalités (MVP)
-
-- 📁 Import de fichiers **MIDI** (`.mid`, `.midi`)
-- 🎼 Visualisation **falling-notes** sur clavier 88 touches
-- 🖐️ Détection automatique main gauche (bleu) / main droite (vert) à partir des pistes MIDI
+- 📁 Import **MIDI** (`.mid`, `.midi`)
+- 🎤 Import **audio** (`.mp3`, `.wav`, `.ogg`, `.flac`) → transcription IA via [basic-pitch](https://github.com/spotify/basic-pitch)
+- 🎼 Bibliothèque de morceaux intégrée (Au clair de la lune, Ode à la Joie, Frère Jacques)
+- 🎹 Visualisation Synthesia-style sur clavier 88 touches, MG/MD codée par couleur
 - ▶️ Lecture audio synchronisée (Tone.js)
-- ⏯️ Contrôles : play / pause / rejouer
+- ⏯️ **Espace = play / pause**
 - 🐢 Vitesse réglable (0.25x → 1.5x)
-- 🔭 Anticipation visuelle ajustable (1s → 6s)
+- 🎬 Export vidéo (canvas + audio → `.webm`)
+
+## 🏛️ Architecture
+
+Le code suit une **architecture hexagonale** (ports & adaptateurs).
+
+```
+src/
+├── domain/          # Entités pures (Hand, PianoNote, Song, Keyboard) — 0 dépendance
+├── application/     # Use cases (PlaybackService, RecordingService) + ports
+├── infrastructure/  # Adaptateurs : Tone.js, @tonejs/midi, basic-pitch, MediaRecorder, Canvas
+└── presentation/    # Vue 3 + composition root
+```
+
+Les imports vont **toujours vers l'intérieur** (`presentation → application → domain`, `infrastructure → application → domain`). Pour ajouter un nouveau format ou un nouveau moteur audio : un nouvel adaptateur, un câblage dans `composition.ts`, rien d'autre à toucher.
 
 ## 🛠️ Stack technique
 
 | Domaine | Choix |
 |---|---|
-| Framework | **Vue 3** + Composition API (`<script setup>`) |
-| Langage | **TypeScript** |
-| Build | **Vite** |
-| Package manager | **Yarn** |
-| Lint / Format | **Biome** |
+| Framework | Vue 3 (Composition API, `<script setup>`) |
+| Langage | TypeScript |
+| Build | Vite |
+| UI | Tailwind v4 (dark glassmorphism) |
+| Package manager | Yarn |
+| Lint / Format | Biome |
 | Parsing MIDI | [`@tonejs/midi`](https://github.com/Tonejs/Midi) |
+| Transcription audio | [`@spotify/basic-pitch`](https://github.com/spotify/basic-pitch) (TF.js) |
 | Audio | [`Tone.js`](https://tonejs.github.io/) |
 | Rendu | HTML Canvas 2D |
+| Versioning | semantic-release (Conventional Commits) |
+| Hébergement | GitHub Pages |
 
 ## 🚀 Démarrage
 
 ```bash
-yarn install
-yarn start
+yarn install      # postinstall copie le modèle basic-pitch dans public/
+yarn start        # http://localhost:5173/pianoflow/
 ```
 
-L'app est ensuite accessible sur `http://localhost:5173`.
-
-### Scripts disponibles
+### Scripts
 
 | Commande | Description |
 |---|---|
-| `yarn start` | Lance le serveur de développement |
-| `yarn build` | Build de production (vérifie les types + bundle) |
-| `yarn preview` | Prévisualise le build de prod |
-| `yarn lint` | Vérifie le code avec Biome |
-| `yarn format` | Formate le code avec Biome |
+| `yarn start` | Serveur de développement |
+| `yarn build` | Type-check + bundle de production |
+| `yarn preview` | Prévisualise le build |
+| `yarn lint` | Vérification Biome |
+| `yarn format` | Formate le code |
+| `yarn library:gen` | Régénère les MIDI de la bibliothèque |
+| `yarn setup:models` | (Re)copie les modèles ML dans `public/` |
 
-## 📂 Structure
+## 🚢 Déploiement (GitHub Pages)
 
-```
-src/
-├── App.vue              # UI principale (toolbar + canvas)
-├── main.ts              # Bootstrap Vue
-├── styles.css           # Styles globaux
-└── piano/
-    ├── keyboard.ts      # Géométrie du clavier 88 touches
-    ├── midiLoader.ts    # Parsing MIDI + détection des mains
-    ├── renderer.ts      # Rendu Canvas (notes qui tombent + clavier)
-    └── audio.ts         # Lecture audio via Tone.js
-```
+Le workflow `.github/workflows/release.yml` se déclenche sur chaque push sur `main` :
 
-## 🗺️ Roadmap
+1. `yarn lint`
+2. `semantic-release` analyse les commits et, si une version doit être publiée :
+   - met à jour `CHANGELOG.md`
+   - bump la version dans `package.json`
+   - crée un tag `vX.Y.Z`
+   - crée la GitHub Release
+3. `yarn build` (avec `PIANOFLOW_BASE=/pianoflow/`)
+4. Déploiement de `dist/` sur GitHub Pages
 
-- [ ] Support **MusicXML** (via `opensheetmusicdisplay` ou conversion MIDI)
-- [ ] Choix manuel des pistes main gauche / main droite
-- [ ] Sampler de piano réaliste (Salamander Grand) plutôt que synth
-- [ ] Mode entraînement : pause à chaque note tant qu'elle n'est pas jouée (clavier MIDI USB)
-- [ ] Export d'une **vidéo** (MediaRecorder)
-- [ ] Import audio (MP3/WAV) → MIDI via [`basic-pitch`](https://github.com/spotify/basic-pitch) (TensorFlow.js)
-- [ ] Bibliothèque de morceaux intégrée
+### Setup côté GitHub (à faire une fois)
 
-## 📝 Format MIDI attendu
+1. Créer le repo `pianoflow` puis `git push -u origin main`
+2. **Settings → Pages → Source : GitHub Actions**
+3. **Settings → Actions → General → Workflow permissions : Read and write permissions** (pour que semantic-release puisse pousser le CHANGELOG et créer les tags)
 
-- Idéalement : **2 pistes** (typiquement piste 0 = main droite, piste 1 = main gauche). PianoFlow attribue automatiquement la piste la plus grave à la main gauche.
-- En cas d'une seule piste : split par hauteur (notes < Do central → main gauche).
+L'application sera accessible sur `https://<utilisateur>.github.io/pianoflow/`.
+
+### Convention de commits
+
+Le projet suit [Conventional Commits](https://www.conventionalcommits.org/) :
+
+- `feat:` → bump **minor** (nouvelle fonctionnalité)
+- `fix:` / `perf:` → bump **patch**
+- `feat!:` ou footer `BREAKING CHANGE:` → bump **major**
+- `docs:` / `refactor:` / `chore:` / `ci:` / `test:` → pas de release
+
+## 📂 Structure du domaine
+
+| Format d'entrée | Adaptateur | Détection MG/MD |
+|---|---|---|
+| MIDI 2+ pistes | `MidiSongParser` | Piste de hauteur moyenne la plus grave → MG |
+| MIDI 1 piste | `MidiSongParser` | Split par hauteur (< Do central → MG) |
+| Audio (mp3/wav/...) | `BasicPitchAudioParser` | Split par hauteur |
 
 ## 🎨 Code de couleurs
 
