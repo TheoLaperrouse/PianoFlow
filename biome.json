@@ -2,8 +2,15 @@
   "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.vue", "**/*.json", "**/*.js"],
-    "experimentalScannerIgnores": ["dist", "node_modules", "*.png", "Piano.md"]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.vue",
+      "**/*.json",
+      "**/*.js",
+      "!**/dist",
+      "!**/node_modules"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -21,5 +28,18 @@
       "semicolons": "always",
       "trailingCommas": "all"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.vue"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    }
+  ]
 }

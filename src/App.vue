@@ -120,7 +120,7 @@ function formatTime(s: number): string {
 <template>
   <div class="app">
     <header class="toolbar">
-      <h1>PianoMaster</h1>
+      <h1>PianoFlow</h1>
 
       <label class="file-input">
         <input type="file" accept=".mid,.midi" @change="onFileChange" />
