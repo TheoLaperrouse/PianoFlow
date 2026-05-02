@@ -1,11 +1,19 @@
 import type { Song } from '../../domain/Song';
 
+/** Plage de touches MIDI affichées. `null` = clavier complet (88 touches). */
+export interface KeyRange {
+  readonly firstMidi: number;
+  readonly lastMidi: number;
+}
+
 /** État immuable décrivant *quoi* afficher à un instant donné. */
 export interface RenderState {
   readonly song: Song | null;
   readonly currentTime: number;
   /** Fenêtre temporelle visible (secondes). Plus c'est grand, plus les notes tombent lentement. */
   readonly lookAhead: number;
+  /** Restreint le clavier visible à une plage. `null` ou absent = 88 touches. */
+  readonly keyRange?: KeyRange | null;
 }
 
 /**

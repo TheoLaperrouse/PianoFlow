@@ -1,7 +1,7 @@
 import type { RendererPort, RenderState } from '../../application/ports/RendererPort';
-import { isBlackKey, midiToNoteName, octaveOf, TOTAL_WHITE_KEYS } from '../../domain/Keyboard';
+import { isBlackKey, midiToNoteName, octaveOf } from '../../domain/Keyboard';
 import { isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/PianoNote';
-import { computeKeyGeometry, type KeyGeometry, noteCenterX } from './canvasGeometry';
+import { computeKeyboardLayout, type KeyboardLayout, noteCenterX } from './canvasGeometry';
 
 const COLORS = {
   bg: '#0d0d10',
@@ -56,19 +56,26 @@ export class CanvasRenderer implements RendererPort {
     if (!ctx) return;
     const width = this.cssWidth;
     const height = this.cssHeight;
-    const keyboardHeight = Math.max(120, Math.min(180, height * 0.22));
+    // Sur petit écran le clavier prend une part proportionnelle plus grande
+    // pour rester tactile. Bornes : 90 px (mode très compact) à 180 px (desktop).
+    const keyboardHeight = Math.max(90, Math.min(180, height * 0.22));
     const fallZoneHeight = height - keyboardHeight;
     const notes = state.song?.notes ?? [];
+    const layout = computeKeyboardLayout(
+      width,
+      state.keyRange?.firstMidi,
+      state.keyRange?.lastMidi,
+    );
 
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, width, height);
 
-    drawFallingNotes(ctx, width, fallZoneHeight, notes, state.currentTime, state.lookAhead);
+    drawFallingNotes(ctx, layout, fallZoneHeight, notes, state.currentTime, state.lookAhead);
 
     ctx.fillStyle = COLORS.hitLine;
     ctx.fillRect(0, fallZoneHeight - 2, width, 3);
 
-    drawKeyboard(ctx, width, keyboardHeight, fallZoneHeight, notes, state.currentTime);
+    drawKeyboard(ctx, layout, keyboardHeight, fallZoneHeight, notes, state.currentTime);
   }
 
   captureStream(fps: number): MediaStream {
@@ -82,23 +89,22 @@ export class CanvasRenderer implements RendererPort {
 
 function drawFallingNotes(
   ctx: CanvasRenderingContext2D,
-  width: number,
+  layout: KeyboardLayout,
   fallZoneHeight: number,
   notes: readonly PianoNote[],
   currentTime: number,
   lookAhead: number,
 ): void {
   const pxPerSecond = fallZoneHeight / lookAhead;
-  const whiteWidth = width / TOTAL_WHITE_KEYS;
-  const blackWidth = whiteWidth * 0.6;
   const windowEnd = currentTime + lookAhead;
 
   for (const note of notes) {
     if (!isVisibleInWindow(note, currentTime, windowEnd)) continue;
+    if (note.midi < layout.firstMidi || note.midi > layout.lastMidi) continue;
 
     const isBlack = isBlackKey(note.midi);
-    const w = isBlack ? blackWidth : whiteWidth * 0.95;
-    const cx = noteCenterX(note.midi, width);
+    const w = isBlack ? layout.blackWidth : layout.whiteWidth * 0.95;
+    const cx = noteCenterX(note.midi, layout);
     const x = cx - w / 2;
 
     const yBottom = fallZoneHeight - (note.time - currentTime) * pxPerSecond;
@@ -133,13 +139,12 @@ function drawFallingNotes(
 
 function drawKeyboard(
   ctx: CanvasRenderingContext2D,
-  width: number,
+  layout: KeyboardLayout,
   keyboardHeight: number,
   yOffset: number,
   notes: readonly PianoNote[],
   currentTime: number,
 ): void {
-  const keys = computeKeyGeometry(width);
   const blackHeight = keyboardHeight * 0.6;
 
   const activeMidi = new Map<number, 'left' | 'right'>();
@@ -147,19 +152,19 @@ function drawKeyboard(
     if (isActiveAt(n, currentTime)) activeMidi.set(n.midi, n.hand);
   }
 
-  drawWhiteKeys(ctx, keys, yOffset, keyboardHeight, activeMidi);
-  drawBlackKeys(ctx, keys, yOffset, blackHeight, activeMidi);
-  drawMiddleCMarker(ctx, keys, yOffset, keyboardHeight);
+  drawWhiteKeys(ctx, layout, yOffset, keyboardHeight, activeMidi);
+  drawBlackKeys(ctx, layout, yOffset, blackHeight, activeMidi);
+  drawMiddleCMarker(ctx, layout, yOffset, keyboardHeight);
 }
 
 function drawWhiteKeys(
   ctx: CanvasRenderingContext2D,
-  keys: KeyGeometry[],
+  layout: KeyboardLayout,
   yOffset: number,
   keyboardHeight: number,
   activeMidi: Map<number, 'left' | 'right'>,
 ): void {
-  for (const key of keys) {
+  for (const key of layout.keys) {
     if (key.isBlack) continue;
     const active = activeMidi.get(key.midi);
     ctx.fillStyle = active
@@ -184,12 +189,12 @@ function drawWhiteKeys(
 
 function drawBlackKeys(
   ctx: CanvasRenderingContext2D,
-  keys: KeyGeometry[],
+  layout: KeyboardLayout,
   yOffset: number,
   blackHeight: number,
   activeMidi: Map<number, 'left' | 'right'>,
 ): void {
-  for (const key of keys) {
+  for (const key of layout.keys) {
     if (!key.isBlack) continue;
     const active = activeMidi.get(key.midi);
     ctx.fillStyle = active
@@ -203,11 +208,11 @@ function drawBlackKeys(
 
 function drawMiddleCMarker(
   ctx: CanvasRenderingContext2D,
-  keys: KeyGeometry[],
+  layout: KeyboardLayout,
   yOffset: number,
   keyboardHeight: number,
 ): void {
-  const c4 = keys.find((k) => k.midi === 60);
+  const c4 = layout.keys.find((k) => k.midi === 60);
   if (!c4) return;
   ctx.fillStyle = '#e74c3c';
   ctx.beginPath();
