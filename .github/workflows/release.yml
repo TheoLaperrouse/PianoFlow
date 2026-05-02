@@ -25,7 +25,7 @@ jobs:
     name: Semantic release + build
     runs-on: ubuntu-latest
     outputs:
-      released: ${{ steps.semrel.outputs.new-release-published }}
+      released: ${{ steps.semrel.outputs.new_release_published }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,13 +57,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
-        if: steps.semrel.outputs.new-release-published == 'true'
+        if: steps.semrel.outputs.new_release_published == 'true'
         env:
           PIANOFLOW_BASE: /pianoflow/
         run: yarn build
 
       - name: Upload Pages artifact
-        if: steps.semrel.outputs.new-release-published == 'true'
+        if: steps.semrel.outputs.new_release_published == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
