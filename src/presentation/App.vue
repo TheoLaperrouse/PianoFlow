@@ -8,6 +8,7 @@ import { createAppContainer } from './composition';
 const container = createAppContainer();
 const playback = container.playback;
 const library = container.library;
+const recording = container.recording;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const song = shallowRef<Song | null>(null);
@@ -18,6 +19,7 @@ const lookAhead = ref(3);
 const currentTime = ref(0);
 const libraryEntries = ref<LibraryEntry[]>([]);
 const selectedLibraryId = ref<string>('');
+const isRecording = ref(false);
 
 let renderer: RendererPort | null = null;
 let rafId: number | null = null;
@@ -119,6 +121,45 @@ function restart() {
 
 watch(rate, (r) => playback.setRate(r));
 
+async function exportVideo() {
+  if (isRecording.value || !song.value) return;
+  error.value = null;
+  isRecording.value = true;
+  try {
+    // Force la vitesse 1x pour un rendu fidèle (l'utilisateur récupère son fichier)
+    const previousRate = rate.value;
+    if (previousRate !== 1) {
+      rate.value = 1;
+      playback.setRate(1);
+    }
+    const blob = await recording.record();
+    if (previousRate !== 1) {
+      rate.value = previousRate;
+      playback.setRate(previousRate);
+    }
+    downloadBlob(blob, suggestedFileName(song.value.name));
+    isPlaying.value = false;
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : "Échec de l'enregistrement";
+  } finally {
+    isRecording.value = false;
+  }
+}
+
+function suggestedFileName(songName: string): string {
+  const base = songName.replace(/\.(mid|midi|mp3|wav)$/i, '');
+  return `${base || 'pianoflow'}.webm`;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
@@ -152,6 +193,9 @@ function formatTime(s: number): string {
         {{ isPlaying ? '⏸ Pause' : '▶ Play' }}
       </button>
       <button :disabled="!song" @click="restart">⏮ Rejouer</button>
+      <button :disabled="!song || isRecording" @click="exportVideo">
+        {{ isRecording ? '⏺ Enregistrement…' : '🎬 Exporter vidéo' }}
+      </button>
 
       <label class="ctrl">
         Vitesse&nbsp;

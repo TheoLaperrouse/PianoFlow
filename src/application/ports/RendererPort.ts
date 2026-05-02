@@ -16,5 +16,7 @@ export interface RendererPort {
   render(state: RenderState): void;
   /** À appeler quand la zone de rendu change de taille. */
   resize(): void;
+  /** Flux vidéo destiné à un enregistreur (export vidéo). */
+  captureStream(fps: number): MediaStream;
   dispose(): void;
 }

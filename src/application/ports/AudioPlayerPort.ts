@@ -13,5 +13,7 @@ export interface AudioPlayerPort {
   /** Position courante dans le morceau, en secondes (échelle musique). */
   getCurrentTime(): number;
   isPlaying(): boolean;
+  /** Flux audio destiné à un enregistreur (export vidéo). */
+  captureStream(): MediaStream;
   dispose(): void;
 }

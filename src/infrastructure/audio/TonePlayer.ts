@@ -14,6 +14,7 @@ import type { Song } from '../../domain/Song';
  */
 export class TonePlayer implements AudioPlayerPort {
   private synth: Tone.PolySynth;
+  private streamDestination: MediaStreamAudioDestinationNode | null = null;
 
   constructor() {
     this.synth = new Tone.PolySynth(Tone.Synth, {
@@ -65,6 +66,16 @@ export class TonePlayer implements AudioPlayerPort {
 
   isPlaying(): boolean {
     return Tone.Transport.state === 'started';
+  }
+
+  captureStream(): MediaStream {
+    if (!this.streamDestination) {
+      const ctx = Tone.getContext().rawContext as AudioContext;
+      this.streamDestination = ctx.createMediaStreamDestination();
+      // Branche en parallèle de la sortie haut-parleurs (les deux jouent en même temps).
+      Tone.getDestination().connect(this.streamDestination);
+    }
+    return this.streamDestination.stream;
   }
 
   dispose(): void {

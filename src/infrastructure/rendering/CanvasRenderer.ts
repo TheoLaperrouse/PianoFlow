@@ -71,6 +71,10 @@ export class CanvasRenderer implements RendererPort {
     drawKeyboard(ctx, width, keyboardHeight, fallZoneHeight, notes, state.currentTime);
   }
 
+  captureStream(fps: number): MediaStream {
+    return this.canvas.captureStream(fps);
+  }
+
   dispose(): void {
     window.removeEventListener('resize', this.resizeListener);
   }
