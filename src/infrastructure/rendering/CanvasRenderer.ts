@@ -17,21 +17,49 @@ const COLORS = {
   activeRightWhite: '#b3e6bb',
   activeLeftBlack: '#3a6ea8',
   activeRightBlack: '#2d7a39',
+  middleC: '#e74c3c',
+  octaveLabel: '#777',
 } as const;
+
+type ActiveMap = Map<number, 'left' | 'right'>;
 
 /**
  * Adaptateur du port RendererPort. Encapsule l'API Canvas 2D et la gestion
- * de la résolution (devicePixelRatio). Ne connaît rien du moteur audio ni
- * du parsing : uniquement le RenderState fourni par l'application.
+ * de la résolution (devicePixelRatio).
+ *
+ * Optimisations performance :
+ *
+ *  1. Le clavier statique (touches blanches/noires, bordures, étiquettes
+ *     d'octaves, repère du Do central) est précalculé une fois sur un
+ *     canvas off-screen, puis recopié à chaque frame avec drawImage.
+ *     Évite de redessiner ~88 rectangles, ~88 traits et ~7 textes par
+ *     frame — gros gain CPU/batterie en mobile.
+ *
+ *  2. Dirty-check : si rien n'a changé depuis la frame précédente
+ *     (currentTime identique, mêmes touches actives, mêmes paramètres),
+ *     on ne refait aucun travail.
  */
 export class CanvasRenderer implements RendererPort {
   private readonly canvas: HTMLCanvasElement;
+  private readonly ctx: CanvasRenderingContext2D | null;
+
   private cssWidth = 0;
   private cssHeight = 0;
   private resizeListener: () => void;
 
+  private cachedLayout: KeyboardLayout | null = null;
+  private layoutKey = '';
+
+  private keyboardCache: HTMLCanvasElement | null = null;
+  private keyboardCacheKey = '';
+
+  private lastFrameHash = '';
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    // alpha:false → optimisation Chromium quand le canvas est opaque
+    // (on remplit toujours la totalité avec COLORS.bg).
+    this.ctx = canvas.getContext('2d', { alpha: false });
     this.resizeListener = () => this.resize();
     window.addEventListener('resize', this.resizeListener);
     this.resize();
@@ -47,25 +75,37 @@ export class CanvasRenderer implements RendererPort {
     this.canvas.style.height = `${this.cssHeight}px`;
     this.canvas.width = Math.round(this.cssWidth * dpr);
     this.canvas.height = Math.round(this.cssHeight * dpr);
-    const ctx = this.canvas.getContext('2d');
-    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Tout invalider — la nouvelle taille change le layout et le cache.
+    this.cachedLayout = null;
+    this.keyboardCache = null;
+    this.lastFrameHash = '';
   }
 
   render(state: RenderState): void {
-    const ctx = this.canvas.getContext('2d');
+    const ctx = this.ctx;
     if (!ctx) return;
     const width = this.cssWidth;
     const height = this.cssHeight;
-    // Sur petit écran le clavier prend une part proportionnelle plus grande
-    // pour rester tactile. Bornes : 90 px (mode très compact) à 180 px (desktop).
+    if (width === 0 || height === 0) return;
+
     const keyboardHeight = Math.max(90, Math.min(180, height * 0.22));
     const fallZoneHeight = height - keyboardHeight;
     const notes = state.song?.notes ?? [];
-    const layout = computeKeyboardLayout(
-      width,
-      state.keyRange?.firstMidi,
-      state.keyRange?.lastMidi,
-    );
+    const layout = this.getLayout(width, state.keyRange?.firstMidi, state.keyRange?.lastMidi);
+    const activeMidi = computeActiveMidi(notes, state.currentTime);
+
+    // Dirty-check : si rien ne change visuellement, skip toute la frame.
+    const frameHash = this.computeFrameHash(state, layout, activeMidi);
+    if (frameHash === this.lastFrameHash) return;
+    this.lastFrameHash = frameHash;
+
+    // Ré-génère le cache du clavier si la géométrie ou la plage change.
+    const cacheKey = `${width}|${keyboardHeight}|${layout.firstMidi}|${layout.lastMidi}`;
+    if (cacheKey !== this.keyboardCacheKey) {
+      this.keyboardCache = buildKeyboardCache(layout, width, keyboardHeight);
+      this.keyboardCacheKey = cacheKey;
+    }
 
     ctx.fillStyle = COLORS.bg;
     ctx.fillRect(0, 0, width, height);
@@ -75,7 +115,14 @@ export class CanvasRenderer implements RendererPort {
     ctx.fillStyle = COLORS.hitLine;
     ctx.fillRect(0, fallZoneHeight - 2, width, 3);
 
-    drawKeyboard(ctx, layout, keyboardHeight, fallZoneHeight, notes, state.currentTime);
+    // Coup principal du gain : 1 drawImage au lieu de 88+ rectangles.
+    if (this.keyboardCache) {
+      ctx.drawImage(this.keyboardCache, 0, fallZoneHeight);
+    }
+
+    if (activeMidi.size > 0) {
+      drawActiveKeysOverlay(ctx, layout, fallZoneHeight, keyboardHeight, activeMidi);
+    }
   }
 
   captureStream(fps: number): MediaStream {
@@ -84,6 +131,127 @@ export class CanvasRenderer implements RendererPort {
 
   dispose(): void {
     window.removeEventListener('resize', this.resizeListener);
+    this.keyboardCache = null;
+    this.cachedLayout = null;
+  }
+
+  private getLayout(width: number, firstMidi?: number, lastMidi?: number): KeyboardLayout {
+    const key = `${width}|${firstMidi ?? '_'}|${lastMidi ?? '_'}`;
+    if (this.cachedLayout && this.layoutKey === key) return this.cachedLayout;
+    this.cachedLayout = computeKeyboardLayout(width, firstMidi, lastMidi);
+    this.layoutKey = key;
+    return this.cachedLayout;
+  }
+
+  private computeFrameHash(state: RenderState, layout: KeyboardLayout, active: ActiveMap): string {
+    // Quantification du temps à 5 ms : si la souris/transport ne progresse
+    // pas (mode pause), le hash reste stable et on skippe le render.
+    const t = Math.round(state.currentTime * 200);
+    const ahead = state.lookAhead;
+    const range = `${layout.firstMidi}-${layout.lastMidi}`;
+    let activeKey = '';
+    if (active.size > 0) {
+      const sorted = [...active.entries()].sort(([a], [b]) => a - b);
+      for (const [midi, hand] of sorted) activeKey += `${midi}${hand[0]},`;
+    }
+    return `${t}|${ahead}|${range}|${activeKey}`;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Helpers de rendu
+ * ------------------------------------------------------------------------ */
+
+function computeActiveMidi(notes: readonly PianoNote[], currentTime: number): ActiveMap {
+  const map: ActiveMap = new Map();
+  for (const n of notes) {
+    if (isActiveAt(n, currentTime)) map.set(n.midi, n.hand);
+  }
+  return map;
+}
+
+function buildKeyboardCache(
+  layout: KeyboardLayout,
+  width: number,
+  keyboardHeight: number,
+): HTMLCanvasElement {
+  const dpr = window.devicePixelRatio || 1;
+  const cache = document.createElement('canvas');
+  cache.width = Math.round(width * dpr);
+  cache.height = Math.round(keyboardHeight * dpr);
+  const ctx = cache.getContext('2d', { alpha: false });
+  if (!ctx) return cache;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const blackHeight = keyboardHeight * 0.6;
+
+  // Touches blanches + bordures + étiquettes d'octave
+  for (const key of layout.keys) {
+    if (key.isBlack) continue;
+    ctx.fillStyle = COLORS.whiteKey;
+    ctx.fillRect(key.x, 0, key.width, keyboardHeight);
+    ctx.strokeStyle = COLORS.keyBorder;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(key.x, 0, key.width, keyboardHeight);
+
+    if (key.midi % 12 === 0) {
+      ctx.fillStyle = COLORS.octaveLabel;
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, keyboardHeight - 4);
+    }
+  }
+
+  // Touches noires
+  for (const key of layout.keys) {
+    if (!key.isBlack) continue;
+    ctx.fillStyle = COLORS.blackKey;
+    ctx.fillRect(key.x, 0, key.width, blackHeight);
+  }
+
+  // Repère Do central (C4 = 60)
+  const c4 = layout.keys.find((k) => k.midi === 60);
+  if (c4) {
+    ctx.fillStyle = COLORS.middleC;
+    ctx.beginPath();
+    ctx.arc(c4.x + c4.width / 2, keyboardHeight - 14, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return cache;
+}
+
+function drawActiveKeysOverlay(
+  ctx: CanvasRenderingContext2D,
+  layout: KeyboardLayout,
+  yOffset: number,
+  keyboardHeight: number,
+  active: ActiveMap,
+): void {
+  const blackHeight = keyboardHeight * 0.6;
+
+  for (const key of layout.keys) {
+    const hand = active.get(key.midi);
+    if (!hand) continue;
+
+    if (key.isBlack) {
+      ctx.fillStyle = hand === 'left' ? COLORS.activeLeftBlack : COLORS.activeRightBlack;
+      ctx.fillRect(key.x, yOffset, key.width, blackHeight);
+    } else {
+      // On garde la bordure existante du cache : on remplit l'intérieur uniquement.
+      ctx.fillStyle = hand === 'left' ? COLORS.activeLeftWhite : COLORS.activeRightWhite;
+      ctx.fillRect(key.x + 1, yOffset + 1, key.width - 2, keyboardHeight - 2);
+
+      // Restaure l'étiquette d'octave si présente sur cette touche
+      if (key.midi % 12 === 0) {
+        ctx.fillStyle = COLORS.octaveLabel;
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, yOffset + keyboardHeight - 4);
+      }
+    }
   }
 }
 
@@ -135,89 +303,6 @@ function drawFallingNotes(
       ctx.fillText(midiToNoteName(note.midi), x + w / 2, yBottom - 12);
     }
   }
-}
-
-function drawKeyboard(
-  ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  keyboardHeight: number,
-  yOffset: number,
-  notes: readonly PianoNote[],
-  currentTime: number,
-): void {
-  const blackHeight = keyboardHeight * 0.6;
-
-  const activeMidi = new Map<number, 'left' | 'right'>();
-  for (const n of notes) {
-    if (isActiveAt(n, currentTime)) activeMidi.set(n.midi, n.hand);
-  }
-
-  drawWhiteKeys(ctx, layout, yOffset, keyboardHeight, activeMidi);
-  drawBlackKeys(ctx, layout, yOffset, blackHeight, activeMidi);
-  drawMiddleCMarker(ctx, layout, yOffset, keyboardHeight);
-}
-
-function drawWhiteKeys(
-  ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  yOffset: number,
-  keyboardHeight: number,
-  activeMidi: Map<number, 'left' | 'right'>,
-): void {
-  for (const key of layout.keys) {
-    if (key.isBlack) continue;
-    const active = activeMidi.get(key.midi);
-    ctx.fillStyle = active
-      ? active === 'left'
-        ? COLORS.activeLeftWhite
-        : COLORS.activeRightWhite
-      : COLORS.whiteKey;
-    ctx.fillRect(key.x, yOffset, key.width, keyboardHeight);
-    ctx.strokeStyle = COLORS.keyBorder;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(key.x, yOffset, key.width, keyboardHeight);
-
-    if (key.midi % 12 === 0) {
-      ctx.fillStyle = '#777';
-      ctx.font = '10px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, yOffset + keyboardHeight - 4);
-    }
-  }
-}
-
-function drawBlackKeys(
-  ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  yOffset: number,
-  blackHeight: number,
-  activeMidi: Map<number, 'left' | 'right'>,
-): void {
-  for (const key of layout.keys) {
-    if (!key.isBlack) continue;
-    const active = activeMidi.get(key.midi);
-    ctx.fillStyle = active
-      ? active === 'left'
-        ? COLORS.activeLeftBlack
-        : COLORS.activeRightBlack
-      : COLORS.blackKey;
-    ctx.fillRect(key.x, yOffset, key.width, blackHeight);
-  }
-}
-
-function drawMiddleCMarker(
-  ctx: CanvasRenderingContext2D,
-  layout: KeyboardLayout,
-  yOffset: number,
-  keyboardHeight: number,
-): void {
-  const c4 = layout.keys.find((k) => k.midi === 60);
-  if (!c4) return;
-  ctx.fillStyle = '#e74c3c';
-  ctx.beginPath();
-  ctx.arc(c4.x + c4.width / 2, yOffset + keyboardHeight - 14, 3, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 function roundedRect(
