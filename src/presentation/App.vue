@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { RendererPort } from '../application/ports/RendererPort';
+import type { LibraryEntry } from '../application/ports/SongLibraryPort';
 import type { Song } from '../domain/Song';
 import { createAppContainer } from './composition';
 
 const container = createAppContainer();
 const playback = container.playback;
+const library = container.library;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const song = shallowRef<Song | null>(null);
@@ -14,6 +16,8 @@ const isPlaying = ref(false);
 const rate = ref(1);
 const lookAhead = ref(3);
 const currentTime = ref(0);
+const libraryEntries = ref<LibraryEntry[]>([]);
+const selectedLibraryId = ref<string>('');
 
 let renderer: RendererPort | null = null;
 let rafId: number | null = null;
@@ -34,23 +38,37 @@ function loop() {
   rafId = requestAnimationFrame(loop);
 }
 
-onMounted(() => {
+function onKeyDown(e: KeyboardEvent) {
+  if (e.code !== 'Space') return;
+  const target = e.target as HTMLElement | null;
+  // Ne pas intercepter dans les champs interactifs (select/range/etc.)
+  if (target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName)) return;
+  if (!song.value) return;
+  e.preventDefault();
+  togglePlay();
+}
+
+onMounted(async () => {
   if (canvasRef.value) {
     renderer = container.createRenderer(canvasRef.value);
   }
   rafId = requestAnimationFrame(loop);
+  window.addEventListener('keydown', onKeyDown);
+  try {
+    libraryEntries.value = await library.list();
+  } catch {
+    // bibliothèque manquante : on n'expose rien
+  }
 });
 
 onBeforeUnmount(() => {
   if (rafId !== null) cancelAnimationFrame(rafId);
+  window.removeEventListener('keydown', onKeyDown);
   renderer?.dispose();
   playback.dispose();
 });
 
-async function onFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
+async function loadFile(file: File) {
   error.value = null;
   try {
     const loaded = await playback.loadFromFile(file);
@@ -60,6 +78,25 @@ async function onFileChange(e: Event) {
     currentTime.value = 0;
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Erreur de lecture du fichier MIDI';
+  }
+}
+
+async function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  await loadFile(file);
+}
+
+async function onLibrarySelect(e: Event) {
+  const id = (e.target as HTMLSelectElement).value;
+  if (!id) return;
+  selectedLibraryId.value = id;
+  try {
+    const file = await library.fetchFile(id);
+    await loadFile(file);
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Impossible de charger le morceau';
   }
 }
 
@@ -99,6 +136,18 @@ function formatTime(s: number): string {
         <span>{{ song ? `📄 ${song.name}` : '📁 Charger un MIDI' }}</span>
       </label>
 
+      <select
+        v-if="libraryEntries.length"
+        class="library-select"
+        :value="selectedLibraryId"
+        @change="onLibrarySelect"
+      >
+        <option value="" disabled>🎼 Bibliothèque…</option>
+        <option v-for="entry in libraryEntries" :key="entry.id" :value="entry.id">
+          {{ entry.title }}{{ entry.composer ? ` — ${entry.composer}` : '' }}
+        </option>
+      </select>
+
       <button :disabled="!song" @click="togglePlay">
         {{ isPlaying ? '⏸ Pause' : '▶ Play' }}
       </button>
@@ -137,7 +186,9 @@ function formatTime(s: number): string {
     <div class="stage">
       <canvas ref="canvasRef"></canvas>
       <div v-if="!song" class="placeholder">
-        Chargez un fichier MIDI (.mid) pour démarrer.
+        Chargez un fichier MIDI (.mid) ou choisissez un morceau dans la bibliothèque pour démarrer.
+        <br />
+        <small>(Espace = play / pause)</small>
       </div>
     </div>
   </div>
@@ -181,6 +232,10 @@ function formatTime(s: number): string {
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.library-select {
+  max-width: 260px;
 }
 
 .ctrl {
