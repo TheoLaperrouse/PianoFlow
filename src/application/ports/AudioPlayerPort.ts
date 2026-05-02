@@ -13,6 +13,10 @@ export interface AudioPlayerPort {
   /** Position courante dans le morceau, en secondes (échelle musique). */
   getCurrentTime(): number;
   isPlaying(): boolean;
+  /** Indique si l'instrument (samples, modèle, etc.) est prêt à jouer. */
+  isReady(): boolean;
+  /** Résout dès que `isReady()` retourne true. */
+  whenReady(): Promise<void>;
   /** Flux audio destiné à un enregistreur (export vidéo). */
   captureStream(): MediaStream;
   dispose(): void;

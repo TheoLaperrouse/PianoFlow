@@ -4,7 +4,47 @@ import { isInRange } from '../../domain/Keyboard';
 import type { Song } from '../../domain/Song';
 
 /**
- * Adaptateur du port AudioPlayerPort basé sur Tone.js.
+ * URL CDN officielle des samples Salamander Grand Piano (Tone.js).
+ * Chaque clé est une note pivot, le sampler interpole pour les notes
+ * intermédiaires, ce qui permet de couvrir 88 touches avec ~16 fichiers.
+ */
+const SALAMANDER_BASE_URL = 'https://tonejs.github.io/audio/salamander/';
+const SALAMANDER_NOTES: Record<string, string> = {
+  A0: 'A0.mp3',
+  C1: 'C1.mp3',
+  'D#1': 'Ds1.mp3',
+  'F#1': 'Fs1.mp3',
+  A1: 'A1.mp3',
+  C2: 'C2.mp3',
+  'D#2': 'Ds2.mp3',
+  'F#2': 'Fs2.mp3',
+  A2: 'A2.mp3',
+  C3: 'C3.mp3',
+  'D#3': 'Ds3.mp3',
+  'F#3': 'Fs3.mp3',
+  A3: 'A3.mp3',
+  C4: 'C4.mp3',
+  'D#4': 'Ds4.mp3',
+  'F#4': 'Fs4.mp3',
+  A4: 'A4.mp3',
+  C5: 'C5.mp3',
+  'D#5': 'Ds5.mp3',
+  'F#5': 'Fs5.mp3',
+  A5: 'A5.mp3',
+  C6: 'C6.mp3',
+  'D#6': 'Ds6.mp3',
+  'F#6': 'Fs6.mp3',
+  A6: 'A6.mp3',
+  C7: 'C7.mp3',
+  'D#7': 'Ds7.mp3',
+  'F#7': 'Fs7.mp3',
+  A7: 'A7.mp3',
+  C8: 'C8.mp3',
+};
+
+/**
+ * Adaptateur du port AudioPlayerPort basé sur Tone.js + Tone.Sampler chargeant
+ * les samples du Salamander Grand Piano (domaine public).
  *
  * Le Transport Tone sert de chronomètre maître : sa position en secondes est
  * également exposée comme « temps musical » au reste de l'application, ce qui
@@ -13,16 +53,28 @@ import type { Song } from '../../domain/Song';
  * BPM du Transport).
  */
 export class TonePlayer implements AudioPlayerPort {
-  private readonly synth: Tone.PolySynth;
+  private readonly sampler: Tone.Sampler;
   private readonly transport = Tone.getTransport();
+  private readonly readyPromise: Promise<void>;
+  private ready = false;
   private streamDestination: MediaStreamAudioDestinationNode | null = null;
 
   constructor() {
-    this.synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.005, decay: 0.2, sustain: 0.3, release: 1 },
+    let resolveReady: () => void = () => {};
+    this.readyPromise = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+
+    this.sampler = new Tone.Sampler({
+      urls: SALAMANDER_NOTES,
+      baseUrl: SALAMANDER_BASE_URL,
+      release: 1,
+      onload: () => {
+        this.ready = true;
+        resolveReady();
+      },
     }).toDestination();
-    this.synth.volume.value = -8;
+    this.sampler.volume.value = -6;
   }
 
   load(song: Song): void {
@@ -33,7 +85,7 @@ export class TonePlayer implements AudioPlayerPort {
     for (const n of song.notes) {
       if (!isInRange(n.midi)) continue;
       this.transport.schedule((time) => {
-        this.synth.triggerAttackRelease(
+        this.sampler.triggerAttackRelease(
           Tone.Frequency(n.midi, 'midi').toNote(),
           Math.max(0.05, n.duration),
           time,
@@ -45,6 +97,7 @@ export class TonePlayer implements AudioPlayerPort {
 
   async play(): Promise<void> {
     await Tone.start();
+    await this.readyPromise;
     this.transport.start();
   }
 
@@ -69,6 +122,14 @@ export class TonePlayer implements AudioPlayerPort {
     return this.transport.state === 'started';
   }
 
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  whenReady(): Promise<void> {
+    return this.readyPromise;
+  }
+
   captureStream(): MediaStream {
     if (!this.streamDestination) {
       const ctx = Tone.getContext().rawContext as AudioContext;
@@ -82,6 +143,6 @@ export class TonePlayer implements AudioPlayerPort {
   dispose(): void {
     this.transport.cancel();
     this.transport.stop();
-    this.synth.dispose();
+    this.sampler.dispose();
   }
 }

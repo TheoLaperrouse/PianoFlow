@@ -54,6 +54,14 @@ export class PlaybackService {
     return this.player.isPlaying();
   }
 
+  isInstrumentReady(): boolean {
+    return this.player.isReady();
+  }
+
+  whenInstrumentReady(): Promise<void> {
+    return this.player.whenReady();
+  }
+
   dispose(): void {
     this.player.dispose();
     this.current = null;
