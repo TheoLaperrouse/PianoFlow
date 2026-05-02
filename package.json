@@ -10,6 +10,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "library:gen": "tsx scripts/generateLibrary.ts",
+    "icons:gen": "tsx scripts/generateIcons.ts",
     "setup:models": "tsx scripts/setupModels.ts",
     "postinstall": "tsx scripts/setupModels.ts"
   },
@@ -30,10 +31,12 @@
     "@vue/tsconfig": "^0.9.1",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "semantic-release": "^25.0.3",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.10",
+    "vite-plugin-pwa": "^1.2.0",
     "vue-tsc": "^3.2.7"
   }
 }
