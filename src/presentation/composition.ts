@@ -12,6 +12,7 @@ import { CompositeSongParser } from '../infrastructure/parsing/CompositeSongPars
 import { MidiSongParser } from '../infrastructure/parsing/MidiSongParser';
 import { MediaRecorderAdapter } from '../infrastructure/recording/MediaRecorderAdapter';
 import { CanvasRenderer } from '../infrastructure/rendering/CanvasRenderer';
+import { ScreenWakeLockAdapter } from '../infrastructure/system/ScreenWakeLockAdapter';
 
 /**
  * Composition root : seul endroit du code qui *connaît* à la fois les ports
@@ -39,7 +40,8 @@ export function createAppContainer(): AppContainer {
     flac: audioParser,
   });
   const player = new TonePlayer();
-  const playback = new PlaybackService(parser, player);
+  const wakeLock = new ScreenWakeLockAdapter();
+  const playback = new PlaybackService(parser, player, wakeLock);
   const library = new BundledSongLibrary();
   const midiInput = new WebMidiInputAdapter();
   const practice = new PracticeService(player, midiInput);

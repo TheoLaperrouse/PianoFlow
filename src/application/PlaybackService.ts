@@ -1,6 +1,7 @@
 import type { Song } from '../domain/Song';
 import type { AudioPlayerPort } from './ports/AudioPlayerPort';
 import type { SongParserPort } from './ports/SongParserPort';
+import type { WakeLockPort } from './ports/WakeLockPort';
 
 /**
  * Use case applicatif. Orchestre le parsing d'un fichier source et le contrôle
@@ -11,15 +12,22 @@ import type { SongParserPort } from './ports/SongParserPort';
 export class PlaybackService {
   private readonly parser: SongParserPort;
   private readonly player: AudioPlayerPort;
+  private readonly wakeLock: WakeLockPort | null;
   private current: Song | null = null;
 
-  constructor(parser: SongParserPort, player: AudioPlayerPort) {
+  constructor(
+    parser: SongParserPort,
+    player: AudioPlayerPort,
+    wakeLock: WakeLockPort | null = null,
+  ) {
     this.parser = parser;
     this.player = player;
+    this.wakeLock = wakeLock;
   }
 
   async loadFromFile(file: File): Promise<Song> {
     this.player.stop();
+    void this.wakeLock?.release();
     const song = await this.parser.parse(file);
     this.player.load(song);
     this.current = song;
@@ -32,14 +40,17 @@ export class PlaybackService {
 
   async play(): Promise<void> {
     await this.player.play();
+    void this.wakeLock?.acquire();
   }
 
   pause(): void {
     this.player.pause();
+    void this.wakeLock?.release();
   }
 
   restart(): void {
     this.player.stop();
+    void this.wakeLock?.release();
   }
 
   setRate(rate: number): void {
@@ -63,6 +74,7 @@ export class PlaybackService {
   }
 
   dispose(): void {
+    void this.wakeLock?.release();
     this.player.dispose();
     this.current = null;
   }
