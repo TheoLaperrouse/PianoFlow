@@ -22,6 +22,8 @@
         key="player"
         :playback="playback"
         :recording="recording"
+        :practice="practice"
+        :midi-input="midiInput"
         :song="song"
         :create-renderer="container.createRenderer"
         @back="backToHome"
@@ -62,6 +64,8 @@ const container = createAppContainer();
 const playback = container.playback;
 const library = container.library;
 const recording = container.recording;
+const practice = container.practice;
+const midiInput = container.midiInput;
 
 const song = shallowRef<Song | null>(null);
 const error = ref<string | null>(null);

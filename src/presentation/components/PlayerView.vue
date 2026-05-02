@@ -11,8 +11,8 @@
       </div>
 
       <div class="flex items-center gap-2 ml-auto">
-        <button class="btn-primary" @click="togglePlay">
-          {{ isPlaying ? '⏸  Pause' : '▶  Play' }}
+        <button class="btn-primary" :disabled="!instrumentReady" @click="togglePlay">
+          {{ !instrumentReady ? '⏳  Chargement…' : isPlaying ? '⏸  Pause' : '▶  Play' }}
         </button>
         <button class="btn-ghost" @click="restart">⏮  Rejouer</button>
         <button class="btn-record" :disabled="isRecording" @click="exportVideo">
@@ -30,7 +30,25 @@
       </div>
     </header>
 
+    <PracticePanel
+      :midi-supported="midiSupported"
+      :devices-requested="devicesRequested"
+      :devices="devices"
+      :selected-device-id="selectedDeviceId"
+      :active="practiceActive"
+      :chord-groups="practiceChordGroups"
+      :expected-index="practiceExpectedIndex"
+      :struck="practiceStruck"
+      @connect="connectMidi"
+      @select-device="selectMidiDevice"
+      @toggle-active="togglePractice"
+    />
+
     <div class="glass mx-3 mb-2 rounded-2xl px-4 py-2 flex flex-wrap items-center gap-4 text-xs">
+      <div v-if="!instrumentReady" class="flex items-center gap-2 text-violet-300">
+        <span class="size-2 rounded-full bg-violet-400 animate-pulse"></span>
+        Chargement du piano…
+      </div>
       <div class="flex items-center gap-2">
         <span class="text-[var(--color-text-muted)]">Vitesse</span>
         <select v-model.number="rate" class="field-select !py-1 !px-2 text-xs">
@@ -64,15 +82,21 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { PlaybackService } from '../../application/PlaybackService';
+import type { PracticeService } from '../../application/PracticeService';
+import type { MidiInputDevice, MidiInputPort } from '../../application/ports/MidiInputPort';
 import type { RendererPort } from '../../application/ports/RendererPort';
 import type { RecordingService } from '../../application/RecordingService';
+import type { ChordGroup } from '../../domain/ChordGroup';
 import type { Song } from '../../domain/Song';
+import PracticePanel from './PracticePanel.vue';
 
 interface Props {
   playback: PlaybackService;
   recording: RecordingService;
+  practice: PracticeService;
+  midiInput: MidiInputPort;
   song: Song;
   createRenderer: (canvas: HTMLCanvasElement) => RendererPort;
 }
@@ -90,9 +114,20 @@ const isRecording = ref(false);
 const rate = ref(1);
 const lookAhead = ref(3);
 const currentTime = ref(0);
+const instrumentReady = ref(props.playback.isInstrumentReady());
+
+const midiSupported = ref(props.midiInput.isSupported());
+const devicesRequested = ref(false);
+const devices = shallowRef<MidiInputDevice[]>([]);
+const selectedDeviceId = ref<string | null>(null);
+const practiceActive = ref(false);
+const practiceChordGroups = shallowRef<readonly ChordGroup[]>([]);
+const practiceExpectedIndex = ref<number | null>(null);
+const practiceStruck = shallowRef<ReadonlySet<number>>(new Set<number>());
 
 let renderer: RendererPort | null = null;
 let rafId: number | null = null;
+let unsubscribePractice: (() => void) | null = null;
 
 function loop() {
   if (renderer) {
@@ -118,12 +153,25 @@ onMounted(() => {
   if (canvasRef.value) renderer = props.createRenderer(canvasRef.value);
   rafId = requestAnimationFrame(loop);
   window.addEventListener('keydown', onKeyDown);
+  unsubscribePractice = props.practice.subscribe((state) => {
+    practiceChordGroups.value = state.chordGroups;
+    practiceExpectedIndex.value = state.expectedIndex;
+    practiceStruck.value = state.struck;
+    practiceActive.value = props.practice.isActive();
+  });
+  if (!instrumentReady.value) {
+    void props.playback.whenInstrumentReady().then(() => {
+      instrumentReady.value = true;
+    });
+  }
 });
 
 onBeforeUnmount(() => {
   if (rafId !== null) cancelAnimationFrame(rafId);
   window.removeEventListener('keydown', onKeyDown);
   renderer?.dispose();
+  unsubscribePractice?.();
+  if (props.practice.isActive()) props.practice.stop();
 });
 
 async function togglePlay() {
@@ -190,4 +238,42 @@ function formatTime(s: number): string {
 
 const progress = () =>
   props.song.duration > 0 ? (currentTime.value / props.song.duration) * 100 : 0;
+
+async function connectMidi() {
+  try {
+    const list = await props.midiInput.requestAccess();
+    devices.value = list;
+    devicesRequested.value = true;
+    if (list.length === 1) {
+      selectMidiDevice(list[0].id);
+    }
+  } catch (err) {
+    emit('error', err instanceof Error ? err.message : 'Accès MIDI refusé');
+  }
+}
+
+function selectMidiDevice(id: string | null) {
+  selectedDeviceId.value = id;
+  props.midiInput.selectDevice(id);
+  if (!id && practiceActive.value) {
+    props.practice.stop();
+  }
+}
+
+function togglePractice(value: boolean) {
+  if (value) {
+    props.practice.start(props.song);
+  } else {
+    props.practice.stop();
+  }
+}
+
+watch(
+  () => props.song,
+  () => {
+    // Si on change de morceau, on arrête le mode entraînement le temps que
+    // l'utilisateur le réactive volontairement.
+    if (practiceActive.value) props.practice.stop();
+  },
+);
 </script>

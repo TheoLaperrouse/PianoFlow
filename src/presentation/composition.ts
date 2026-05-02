@@ -1,8 +1,11 @@
 import { PlaybackService } from '../application/PlaybackService';
+import { PracticeService } from '../application/PracticeService';
+import type { MidiInputPort } from '../application/ports/MidiInputPort';
 import type { RendererPort } from '../application/ports/RendererPort';
 import type { SongLibraryPort } from '../application/ports/SongLibraryPort';
 import { RecordingService } from '../application/RecordingService';
 import { TonePlayer } from '../infrastructure/audio/TonePlayer';
+import { WebMidiInputAdapter } from '../infrastructure/input/WebMidiInputAdapter';
 import { BundledSongLibrary } from '../infrastructure/library/BundledSongLibrary';
 import { BasicPitchAudioParser } from '../infrastructure/parsing/BasicPitchAudioParser';
 import { CompositeSongParser } from '../infrastructure/parsing/CompositeSongParser';
@@ -19,6 +22,8 @@ export interface AppContainer {
   playback: PlaybackService;
   library: SongLibraryPort;
   recording: RecordingService;
+  practice: PracticeService;
+  midiInput: MidiInputPort;
   createRenderer: (canvas: HTMLCanvasElement) => RendererPort;
 }
 
@@ -36,6 +41,8 @@ export function createAppContainer(): AppContainer {
   const player = new TonePlayer();
   const playback = new PlaybackService(parser, player);
   const library = new BundledSongLibrary();
+  const midiInput = new WebMidiInputAdapter();
+  const practice = new PracticeService(player, midiInput);
 
   let activeRenderer: RendererPort | null = null;
   const recording = new RecordingService({
@@ -49,6 +56,8 @@ export function createAppContainer(): AppContainer {
     playback,
     library,
     recording,
+    practice,
+    midiInput,
     createRenderer: (canvas) => {
       activeRenderer = new CanvasRenderer(canvas);
       return activeRenderer;
