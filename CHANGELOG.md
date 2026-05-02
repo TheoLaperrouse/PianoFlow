@@ -1,3 +1,18 @@
+## [1.1.0](https://github.com/TheoLaperrouse/PianoFlow/compare/v1.0.1...v1.1.0) (2026-05-02)
+
+### ✨ Fonctionnalités
+
+* **audio:** use Salamander Grand Piano samples instead of synth ([0c994a4](https://github.com/TheoLaperrouse/PianoFlow/commit/0c994a4a344b7998a3138cb9f225c5506c012f64))
+* **practice:** wait-for-input mode driven by USB MIDI keyboard ([9d66ca9](https://github.com/TheoLaperrouse/PianoFlow/commit/9d66ca91d667feaa3c7ce51f5f4dcb78e3a6ffb7))
+
+### 🐛 Corrections
+
+* **ci:** use correct semantic-release output name (underscores) ([09d644a](https://github.com/TheoLaperrouse/PianoFlow/commit/09d644a54542ed6d0e86b46f6230a2ed8de2f2bb))
+
+### ♻️ Refactoring
+
+* **audio:** replace deprecated Tone.Transport singleton ([dbef028](https://github.com/TheoLaperrouse/PianoFlow/commit/dbef028676791efe1253745a021b01a845c759b2))
+
 ## [1.0.1](https://github.com/TheoLaperrouse/PianoFlow/compare/v1.0.0...v1.0.1) (2026-05-02)
 
 ### 🐛 Corrections
