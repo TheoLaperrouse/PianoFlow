@@ -8,6 +8,11 @@ concurrency:
   group: release-pages
   cancel-in-progress: false
 
+# Opt-in : exécute les actions JS sur Node 24 (GitHub forcera ce comportement
+# en juin 2026). Élimine les warnings de dépréciation de Node 20.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: write
   issues: write
