@@ -1,21 +1,7 @@
-import {
-  computeKeyGeometry,
-  isBlackKey,
-  midiToNoteName,
-  noteCenterX,
-  TOTAL_WHITE_KEYS,
-} from './keyboard';
-import type { PianoNote } from './midiLoader';
-
-export interface RenderOptions {
-  ctx: CanvasRenderingContext2D;
-  width: number;
-  height: number;
-  notes: PianoNote[];
-  currentTime: number;
-  /** Secondes de musique visibles à l'écran (vitesse de chute). */
-  lookAhead: number;
-}
+import type { RendererPort, RenderState } from '../../application/ports/RendererPort';
+import { isBlackKey, midiToNoteName, octaveOf, TOTAL_WHITE_KEYS } from '../../domain/Keyboard';
+import { isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/PianoNote';
+import { computeKeyGeometry, type KeyGeometry, noteCenterX } from './canvasGeometry';
 
 const COLORS = {
   bg: '#0d0d10',
@@ -31,40 +17,80 @@ const COLORS = {
   activeRightWhite: '#b3e6bb',
   activeLeftBlack: '#3a6ea8',
   activeRightBlack: '#2d7a39',
-};
+} as const;
 
-export function render(opts: RenderOptions): void {
-  const { ctx, width, height, notes, currentTime, lookAhead } = opts;
-  const keyboardHeight = Math.max(120, Math.min(180, height * 0.22));
-  const fallZoneHeight = height - keyboardHeight;
+/**
+ * Adaptateur du port RendererPort. Encapsule l'API Canvas 2D et la gestion
+ * de la résolution (devicePixelRatio). Ne connaît rien du moteur audio ni
+ * du parsing : uniquement le RenderState fourni par l'application.
+ */
+export class CanvasRenderer implements RendererPort {
+  private readonly canvas: HTMLCanvasElement;
+  private cssWidth = 0;
+  private cssHeight = 0;
+  private resizeListener: () => void;
 
-  ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, width, height);
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    this.resizeListener = () => this.resize();
+    window.addEventListener('resize', this.resizeListener);
+    this.resize();
+  }
 
-  drawFallingNotes(ctx, width, fallZoneHeight, notes, currentTime, lookAhead);
+  resize(): void {
+    const parent = this.canvas.parentElement;
+    if (!parent) return;
+    const dpr = window.devicePixelRatio || 1;
+    this.cssWidth = parent.clientWidth;
+    this.cssHeight = parent.clientHeight;
+    this.canvas.style.width = `${this.cssWidth}px`;
+    this.canvas.style.height = `${this.cssHeight}px`;
+    this.canvas.width = Math.round(this.cssWidth * dpr);
+    this.canvas.height = Math.round(this.cssHeight * dpr);
+    const ctx = this.canvas.getContext('2d');
+    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 
-  ctx.fillStyle = COLORS.hitLine;
-  ctx.fillRect(0, fallZoneHeight - 2, width, 3);
+  render(state: RenderState): void {
+    const ctx = this.canvas.getContext('2d');
+    if (!ctx) return;
+    const width = this.cssWidth;
+    const height = this.cssHeight;
+    const keyboardHeight = Math.max(120, Math.min(180, height * 0.22));
+    const fallZoneHeight = height - keyboardHeight;
+    const notes = state.song?.notes ?? [];
 
-  drawKeyboard(ctx, width, keyboardHeight, fallZoneHeight, notes, currentTime);
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, width, height);
+
+    drawFallingNotes(ctx, width, fallZoneHeight, notes, state.currentTime, state.lookAhead);
+
+    ctx.fillStyle = COLORS.hitLine;
+    ctx.fillRect(0, fallZoneHeight - 2, width, 3);
+
+    drawKeyboard(ctx, width, keyboardHeight, fallZoneHeight, notes, state.currentTime);
+  }
+
+  dispose(): void {
+    window.removeEventListener('resize', this.resizeListener);
+  }
 }
 
 function drawFallingNotes(
   ctx: CanvasRenderingContext2D,
   width: number,
   fallZoneHeight: number,
-  notes: PianoNote[],
+  notes: readonly PianoNote[],
   currentTime: number,
   lookAhead: number,
 ): void {
   const pxPerSecond = fallZoneHeight / lookAhead;
   const whiteWidth = width / TOTAL_WHITE_KEYS;
   const blackWidth = whiteWidth * 0.6;
+  const windowEnd = currentTime + lookAhead;
 
   for (const note of notes) {
-    const noteEnd = note.time + note.duration;
-    if (noteEnd < currentTime) continue;
-    if (note.time > currentTime + lookAhead) continue;
+    if (!isVisibleInWindow(note, currentTime, windowEnd)) continue;
 
     const isBlack = isBlackKey(note.midi);
     const w = isBlack ? blackWidth : whiteWidth * 0.95;
@@ -106,7 +132,7 @@ function drawKeyboard(
   width: number,
   keyboardHeight: number,
   yOffset: number,
-  notes: PianoNote[],
+  notes: readonly PianoNote[],
   currentTime: number,
 ): void {
   const keys = computeKeyGeometry(width);
@@ -114,11 +140,21 @@ function drawKeyboard(
 
   const activeMidi = new Map<number, 'left' | 'right'>();
   for (const n of notes) {
-    if (n.time <= currentTime && n.time + n.duration >= currentTime) {
-      activeMidi.set(n.midi, n.hand);
-    }
+    if (isActiveAt(n, currentTime)) activeMidi.set(n.midi, n.hand);
   }
 
+  drawWhiteKeys(ctx, keys, yOffset, keyboardHeight, activeMidi);
+  drawBlackKeys(ctx, keys, yOffset, blackHeight, activeMidi);
+  drawMiddleCMarker(ctx, keys, yOffset, keyboardHeight);
+}
+
+function drawWhiteKeys(
+  ctx: CanvasRenderingContext2D,
+  keys: KeyGeometry[],
+  yOffset: number,
+  keyboardHeight: number,
+  activeMidi: Map<number, 'left' | 'right'>,
+): void {
   for (const key of keys) {
     if (key.isBlack) continue;
     const active = activeMidi.get(key.midi);
@@ -133,15 +169,22 @@ function drawKeyboard(
     ctx.strokeRect(key.x, yOffset, key.width, keyboardHeight);
 
     if (key.midi % 12 === 0) {
-      const octave = Math.floor(key.midi / 12) - 1;
       ctx.fillStyle = '#777';
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`C${octave}`, key.x + key.width / 2, yOffset + keyboardHeight - 4);
+      ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, yOffset + keyboardHeight - 4);
     }
   }
+}
 
+function drawBlackKeys(
+  ctx: CanvasRenderingContext2D,
+  keys: KeyGeometry[],
+  yOffset: number,
+  blackHeight: number,
+  activeMidi: Map<number, 'left' | 'right'>,
+): void {
   for (const key of keys) {
     if (!key.isBlack) continue;
     const active = activeMidi.get(key.midi);
@@ -152,15 +195,20 @@ function drawKeyboard(
       : COLORS.blackKey;
     ctx.fillRect(key.x, yOffset, key.width, blackHeight);
   }
+}
 
-  // marqueur du Do central (C4 = 60)
+function drawMiddleCMarker(
+  ctx: CanvasRenderingContext2D,
+  keys: KeyGeometry[],
+  yOffset: number,
+  keyboardHeight: number,
+): void {
   const c4 = keys.find((k) => k.midi === 60);
-  if (c4) {
-    ctx.fillStyle = '#e74c3c';
-    ctx.beginPath();
-    ctx.arc(c4.x + c4.width / 2, yOffset + keyboardHeight - 14, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  if (!c4) return;
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(c4.x + c4.width / 2, yOffset + keyboardHeight - 14, 3, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function roundedRect(

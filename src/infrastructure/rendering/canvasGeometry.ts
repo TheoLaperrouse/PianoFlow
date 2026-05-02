@@ -1,45 +1,16 @@
-// 88 touches : MIDI 21 (A0) -> MIDI 108 (C8)
-export const FIRST_MIDI = 21;
-export const LAST_MIDI = 108;
+import {
+  countWhiteKeysBefore,
+  FIRST_MIDI,
+  isBlackKey,
+  LAST_MIDI,
+  TOTAL_WHITE_KEYS,
+} from '../../domain/Keyboard';
 
-const BLACK_KEY_PATTERN = [
-  false,
-  true,
-  false,
-  true,
-  false,
-  false,
-  true,
-  false,
-  true,
-  false,
-  true,
-  false,
-];
-
-export function isBlackKey(midi: number): boolean {
-  return BLACK_KEY_PATTERN[midi % 12];
-}
-
-export function midiToNoteName(midi: number): string {
-  const names = ['Do', 'Do#', 'Ré', 'Ré#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
-  return names[midi % 12];
-}
-
-export function countWhiteKeysBefore(midi: number): number {
-  let count = 0;
-  for (let m = FIRST_MIDI; m < midi; m++) {
-    if (!isBlackKey(m)) count++;
-  }
-  return count;
-}
-
-export const TOTAL_WHITE_KEYS = (() => {
-  let n = 0;
-  for (let m = FIRST_MIDI; m <= LAST_MIDI; m++) if (!isBlackKey(m)) n++;
-  return n;
-})();
-
+/**
+ * Adaptateur de géométrie : projette le clavier du domaine en coordonnées
+ * pixel pour un canvas de largeur donnée. Cette responsabilité (mapping
+ * domaine → pixel) appartient à l'infrastructure de rendu, pas au domaine.
+ */
 export interface KeyGeometry {
   midi: number;
   isBlack: boolean;

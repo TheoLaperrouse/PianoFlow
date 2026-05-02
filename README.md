@@ -31,7 +31,7 @@ Inspiré de Synthesia / piano tutorials, conçu pour les débutants qui veulent 
 
 ```bash
 yarn install
-yarn dev
+yarn start
 ```
 
 L'app est ensuite accessible sur `http://localhost:5173`.
@@ -40,7 +40,7 @@ L'app est ensuite accessible sur `http://localhost:5173`.
 
 | Commande | Description |
 |---|---|
-| `yarn dev` | Lance le serveur de développement |
+| `yarn start` | Lance le serveur de développement |
 | `yarn build` | Build de production (vérifie les types + bundle) |
 | `yarn preview` | Prévisualise le build de prod |
 | `yarn lint` | Vérifie le code avec Biome |

@@ -1,72 +1,50 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
-import { type AudioController, createAudioController } from './piano/audio';
-import { type LoadedSong, loadMidiFile } from './piano/midiLoader';
-import { render } from './piano/renderer';
+import type { RendererPort } from '../application/ports/RendererPort';
+import type { Song } from '../domain/Song';
+import { createAppContainer } from './composition';
+
+const container = createAppContainer();
+const playback = container.playback;
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
-const stageRef = ref<HTMLDivElement | null>(null);
-
-const song = shallowRef<LoadedSong | null>(null);
-const audio = shallowRef<AudioController | null>(null);
+const song = shallowRef<Song | null>(null);
 const error = ref<string | null>(null);
 const isPlaying = ref(false);
 const rate = ref(1);
 const lookAhead = ref(3);
 const currentTime = ref(0);
 
+let renderer: RendererPort | null = null;
 let rafId: number | null = null;
-let cssWidth = 0;
-let cssHeight = 0;
 
 function loop() {
-  const canvas = canvasRef.value;
-  if (canvas) {
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const t = audio.value?.getTime() ?? 0;
-      currentTime.value = t;
-      if (audio.value && !audio.value.isPlaying() && isPlaying.value) {
-        isPlaying.value = false;
-      }
-      render({
-        ctx,
-        width: cssWidth,
-        height: cssHeight,
-        notes: song.value?.notes ?? [],
-        currentTime: t,
-        lookAhead: lookAhead.value,
-      });
+  if (renderer) {
+    const t = playback.getCurrentTime();
+    currentTime.value = t;
+    if (!playback.isPlaying() && isPlaying.value) {
+      isPlaying.value = false;
     }
+    renderer.render({
+      song: song.value,
+      currentTime: t,
+      lookAhead: lookAhead.value,
+    });
   }
   rafId = requestAnimationFrame(loop);
 }
 
-function resizeCanvas() {
-  const canvas = canvasRef.value;
-  const stage = stageRef.value;
-  if (!canvas || !stage) return;
-  const dpr = window.devicePixelRatio || 1;
-  cssWidth = stage.clientWidth;
-  cssHeight = stage.clientHeight;
-  canvas.style.width = `${cssWidth}px`;
-  canvas.style.height = `${cssHeight}px`;
-  canvas.width = Math.round(cssWidth * dpr);
-  canvas.height = Math.round(cssHeight * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-
 onMounted(() => {
-  resizeCanvas();
-  window.addEventListener('resize', resizeCanvas);
+  if (canvasRef.value) {
+    renderer = container.createRenderer(canvasRef.value);
+  }
   rafId = requestAnimationFrame(loop);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', resizeCanvas);
   if (rafId !== null) cancelAnimationFrame(rafId);
-  audio.value?.stop();
+  renderer?.dispose();
+  playback.dispose();
 });
 
 async function onFileChange(e: Event) {
@@ -75,12 +53,9 @@ async function onFileChange(e: Event) {
   if (!file) return;
   error.value = null;
   try {
-    audio.value?.stop();
-    const loaded = await loadMidiFile(file);
+    const loaded = await playback.loadFromFile(file);
+    playback.setRate(rate.value);
     song.value = loaded;
-    const ctrl = createAudioController(loaded.notes);
-    ctrl.setRate(rate.value);
-    audio.value = ctrl;
     isPlaying.value = false;
     currentTime.value = 0;
   } catch (err) {
@@ -89,26 +64,23 @@ async function onFileChange(e: Event) {
 }
 
 async function togglePlay() {
-  const ctrl = audio.value;
-  if (!ctrl) return;
-  if (ctrl.isPlaying()) {
-    ctrl.pause();
+  if (!song.value) return;
+  if (playback.isPlaying()) {
+    playback.pause();
     isPlaying.value = false;
   } else {
-    await ctrl.play();
+    await playback.play();
     isPlaying.value = true;
   }
 }
 
 function restart() {
-  audio.value?.stop();
+  playback.restart();
   isPlaying.value = false;
   currentTime.value = 0;
 }
 
-watch(rate, (r) => {
-  audio.value?.setRate(r);
-});
+watch(rate, (r) => playback.setRate(r));
 
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
@@ -162,7 +134,7 @@ function formatTime(s: number): string {
 
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div ref="stageRef" class="stage">
+    <div class="stage">
       <canvas ref="canvasRef"></canvas>
       <div v-if="!song" class="placeholder">
         Chargez un fichier MIDI (.mid) pour démarrer.
