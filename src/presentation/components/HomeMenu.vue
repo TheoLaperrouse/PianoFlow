@@ -1,23 +1,3 @@
-<script setup lang="ts">
-import type { LibraryEntry } from '../../application/ports/SongLibraryPort';
-
-interface Props {
-  libraryEntries: LibraryEntry[];
-  isTranscribing: boolean;
-}
-defineProps<Props>();
-
-const emit = defineEmits<{
-  (e: 'pick-file', file: File): void;
-  (e: 'pick-library', id: string): void;
-}>();
-
-function onFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (file) emit('pick-file', file);
-}
-</script>
-
 <template>
   <div class="relative h-full w-full flex items-center justify-center px-6 overflow-hidden">
     <div class="relative z-10 w-full max-w-3xl text-center">
@@ -88,3 +68,23 @@ function onFile(e: Event) {
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import type { LibraryEntry } from '../../application/ports/SongLibraryPort';
+
+interface Props {
+  libraryEntries: LibraryEntry[];
+  isTranscribing: boolean;
+}
+defineProps<Props>();
+
+const emit = defineEmits<{
+  (e: 'pick-file', file: File): void;
+  (e: 'pick-library', id: string): void;
+}>();
+
+function onFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (file) emit('pick-file', file);
+}
+</script>

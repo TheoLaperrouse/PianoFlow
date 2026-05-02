@@ -1,3 +1,54 @@
+<template>
+  <div class="relative h-full w-full overflow-hidden">
+    <FloatingMusicSymbols />
+
+    <Transition
+      enter-active-class="transition-opacity duration-500"
+      leave-active-class="transition-opacity duration-300"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+      mode="out-in"
+    >
+      <HomeMenu
+        v-if="view === 'home' || !song"
+        key="home"
+        :library-entries="libraryEntries"
+        :is-transcribing="isTranscribing"
+        @pick-file="handleLoadFile"
+        @pick-library="handleLoadLibrary"
+      />
+      <PlayerView
+        v-else
+        key="player"
+        :playback="playback"
+        :recording="recording"
+        :song="song"
+        :create-renderer="container.createRenderer"
+        @back="backToHome"
+        @load-file="handleLoadFile"
+        @error="setError"
+      />
+    </Transition>
+
+    <Transition
+      enter-active-class="transition-all duration-200"
+      enter-from-class="opacity-0 translate-y-4"
+      leave-active-class="transition-all duration-200"
+      leave-to-class="opacity-0 translate-y-4"
+    >
+      <div
+        v-if="error"
+        class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 glass-strong rounded-xl px-4 py-3 text-sm flex items-center gap-3 shadow-2xl"
+        role="alert"
+      >
+        <span class="text-rose-400">⚠</span>
+        <span>{{ error }}</span>
+        <button class="text-[var(--color-text-muted)] hover:text-white" @click="error = null">×</button>
+      </div>
+    </Transition>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import type { LibraryEntry } from '../application/ports/SongLibraryPort';
@@ -64,54 +115,3 @@ function setError(message: string) {
   error.value = message;
 }
 </script>
-
-<template>
-  <div class="relative h-full w-full overflow-hidden">
-    <FloatingMusicSymbols />
-
-    <Transition
-      enter-active-class="transition-opacity duration-500"
-      leave-active-class="transition-opacity duration-300"
-      enter-from-class="opacity-0"
-      leave-to-class="opacity-0"
-      mode="out-in"
-    >
-      <HomeMenu
-        v-if="view === 'home' || !song"
-        key="home"
-        :library-entries="libraryEntries"
-        :is-transcribing="isTranscribing"
-        @pick-file="handleLoadFile"
-        @pick-library="handleLoadLibrary"
-      />
-      <PlayerView
-        v-else
-        key="player"
-        :playback="playback"
-        :recording="recording"
-        :song="song"
-        :create-renderer="container.createRenderer"
-        @back="backToHome"
-        @load-file="handleLoadFile"
-        @error="setError"
-      />
-    </Transition>
-
-    <Transition
-      enter-active-class="transition-all duration-200"
-      enter-from-class="opacity-0 translate-y-4"
-      leave-active-class="transition-all duration-200"
-      leave-to-class="opacity-0 translate-y-4"
-    >
-      <div
-        v-if="error"
-        class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 glass-strong rounded-xl px-4 py-3 text-sm flex items-center gap-3 shadow-2xl"
-        role="alert"
-      >
-        <span class="text-rose-400">⚠</span>
-        <span>{{ error }}</span>
-        <button class="text-[var(--color-text-muted)] hover:text-white" @click="error = null">×</button>
-      </div>
-    </Transition>
-  </div>
-</template>

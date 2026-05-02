@@ -1,3 +1,23 @@
+<template>
+  <div class="pointer-events-none absolute inset-0 overflow-hidden">
+    <span
+      v-for="(s, i) in symbols"
+      :key="i"
+      class="float-symbol"
+      :style="{
+        left: s.left,
+        fontSize: s.size,
+        animationDuration: s.duration,
+        animationDelay: s.delay,
+        '--drift': s.drift,
+        '--opacity': s.opacity,
+      }"
+    >
+      {{ s.char }}
+    </span>
+  </div>
+</template>
+
 <script setup lang="ts">
 import { computed } from 'vue';
 
@@ -33,23 +53,3 @@ const symbols = computed<Symbol[]>(() =>
   }),
 );
 </script>
-
-<template>
-  <div class="pointer-events-none absolute inset-0 overflow-hidden">
-    <span
-      v-for="(s, i) in symbols"
-      :key="i"
-      class="float-symbol"
-      :style="{
-        left: s.left,
-        fontSize: s.size,
-        animationDuration: s.duration,
-        animationDelay: s.delay,
-        '--drift': s.drift,
-        '--opacity': s.opacity,
-      }"
-    >
-      {{ s.char }}
-    </span>
-  </div>
-</template>
