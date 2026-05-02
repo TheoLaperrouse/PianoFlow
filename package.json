@@ -9,9 +9,13 @@
     "preview": "vite preview",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "library:gen": "tsx scripts/generateLibrary.ts"
+    "library:gen": "tsx scripts/generateLibrary.ts",
+    "setup:models": "tsx scripts/setupModels.ts",
+    "postinstall": "tsx scripts/setupModels.ts"
   },
   "dependencies": {
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tensorflow/tfjs": "^4.22.0",
     "@tonejs/midi": "^2.0.28",
     "tone": "^15.1.22",
     "vue": "^3.5.32"

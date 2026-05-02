@@ -20,6 +20,7 @@ const currentTime = ref(0);
 const libraryEntries = ref<LibraryEntry[]>([]);
 const selectedLibraryId = ref<string>('');
 const isRecording = ref(false);
+const isTranscribing = ref(false);
 
 let renderer: RendererPort | null = null;
 let rafId: number | null = null;
@@ -72,6 +73,8 @@ onBeforeUnmount(() => {
 
 async function loadFile(file: File) {
   error.value = null;
+  const isAudio = /\.(mp3|wav|ogg|flac)$/i.test(file.name);
+  if (isAudio) isTranscribing.value = true;
   try {
     const loaded = await playback.loadFromFile(file);
     playback.setRate(rate.value);
@@ -79,7 +82,9 @@ async function loadFile(file: File) {
     isPlaying.value = false;
     currentTime.value = 0;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Erreur de lecture du fichier MIDI';
+    error.value = err instanceof Error ? err.message : 'Erreur de lecture du fichier';
+  } finally {
+    isTranscribing.value = false;
   }
 }
 
@@ -173,8 +178,14 @@ function formatTime(s: number): string {
       <h1>PianoFlow</h1>
 
       <label class="file-input">
-        <input type="file" accept=".mid,.midi" @change="onFileChange" />
-        <span>{{ song ? `📄 ${song.name}` : '📁 Charger un MIDI' }}</span>
+        <input type="file" accept=".mid,.midi,.mp3,.wav,.ogg,.flac" @change="onFileChange" />
+        <span>{{
+          isTranscribing
+            ? '🧠 Transcription IA…'
+            : song
+              ? `📄 ${song.name}`
+              : '📁 Charger un fichier (MIDI / MP3 / WAV)'
+        }}</span>
       </label>
 
       <select

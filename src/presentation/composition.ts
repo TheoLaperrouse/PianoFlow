@@ -4,6 +4,8 @@ import type { SongLibraryPort } from '../application/ports/SongLibraryPort';
 import { RecordingService } from '../application/RecordingService';
 import { TonePlayer } from '../infrastructure/audio/TonePlayer';
 import { BundledSongLibrary } from '../infrastructure/library/BundledSongLibrary';
+import { BasicPitchAudioParser } from '../infrastructure/parsing/BasicPitchAudioParser';
+import { CompositeSongParser } from '../infrastructure/parsing/CompositeSongParser';
 import { MidiSongParser } from '../infrastructure/parsing/MidiSongParser';
 import { MediaRecorderAdapter } from '../infrastructure/recording/MediaRecorderAdapter';
 import { CanvasRenderer } from '../infrastructure/rendering/CanvasRenderer';
@@ -21,7 +23,16 @@ export interface AppContainer {
 }
 
 export function createAppContainer(): AppContainer {
-  const parser = new MidiSongParser();
+  const midiParser = new MidiSongParser();
+  const audioParser = new BasicPitchAudioParser();
+  const parser = new CompositeSongParser({
+    mid: midiParser,
+    midi: midiParser,
+    mp3: audioParser,
+    wav: audioParser,
+    ogg: audioParser,
+    flac: audioParser,
+  });
   const player = new TonePlayer();
   const playback = new PlaybackService(parser, player);
   const library = new BundledSongLibrary();
