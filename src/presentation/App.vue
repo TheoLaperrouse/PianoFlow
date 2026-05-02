@@ -32,6 +32,8 @@
       />
     </Transition>
 
+    <PwaUpdater />
+
     <Transition
       enter-active-class="transition-all duration-200"
       enter-from-class="opacity-0 translate-y-4"
@@ -58,6 +60,7 @@ import type { Song } from '../domain/Song';
 import FloatingMusicSymbols from './components/FloatingMusicSymbols.vue';
 import HomeMenu from './components/HomeMenu.vue';
 import PlayerView from './components/PlayerView.vue';
+import PwaUpdater from './components/PwaUpdater.vue';
 import { createAppContainer } from './composition';
 
 const container = createAppContainer();

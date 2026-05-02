@@ -1,22 +1,22 @@
 <template>
-  <div class="relative h-full w-full flex items-center justify-center px-6 overflow-hidden">
-    <div class="relative z-10 w-full max-w-3xl text-center">
-      <div class="mb-6 inline-flex items-center gap-2 chip">
+  <div class="relative h-full w-full flex items-center justify-center px-4 sm:px-6 py-4 overflow-y-auto">
+    <div class="relative z-10 w-full max-w-3xl text-center my-auto">
+      <div class="mb-4 sm:mb-6 inline-flex items-center gap-2 chip">
         <span class="size-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
         Apprendre le piano sans solfège
       </div>
 
-      <h1 class="text-5xl sm:text-7xl font-bold tracking-tight mb-4">
+      <h1 class="text-4xl sm:text-7xl font-bold tracking-tight mb-3 sm:mb-4">
         <span class="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-emerald-300 bg-clip-text text-transparent">
           PianoFlow
         </span>
       </h1>
-      <p class="text-base sm:text-lg text-[var(--color-text-muted)] max-w-xl mx-auto mb-12">
+      <p class="text-sm sm:text-lg text-text-muted max-w-xl mx-auto mb-6 sm:mb-12">
         Importez une partition MIDI ou même un MP3 — les notes descendent jusqu'au clavier,
         bleu pour la main gauche, vert pour la main droite. Vous jouez, c'est tout.
       </p>
 
-      <div class="grid sm:grid-cols-2 gap-4 mb-10">
+      <div class="grid sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-10">
         <label class="glass-strong rounded-2xl p-6 cursor-pointer text-left transition-all hover:scale-[1.02] hover:border-violet-400/50 group">
           <div class="flex items-center gap-3 mb-3">
             <div class="size-10 rounded-xl bg-violet-500/20 grid place-items-center text-xl group-hover:bg-violet-500/30 transition-colors">
@@ -24,11 +24,11 @@
             </div>
             <span class="font-semibold text-lg">Charger un fichier</span>
           </div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">
+          <p class="text-sm text-text-muted mb-3">
             MIDI (.mid) ou audio (.mp3, .wav, .ogg) — la transcription IA se déclenche pour l'audio.
           </p>
           <span v-if="isTranscribing" class="text-xs text-violet-300">🧠 Transcription en cours…</span>
-          <span v-else class="text-xs text-[var(--color-text-muted)]">Cliquer pour choisir un fichier</span>
+          <span v-else class="text-xs text-text-muted">Cliquer pour choisir un fichier</span>
           <input type="file" accept=".mid,.midi,.mp3,.wav,.ogg,.flac" class="hidden" @change="onFile" />
         </label>
 
@@ -39,7 +39,7 @@
             </div>
             <span class="font-semibold text-lg">Bibliothèque</span>
           </div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">
+          <p class="text-sm text-text-muted mb-3">
             Quelques classiques pour commencer tout de suite.
           </p>
           <div class="space-y-1.5">
@@ -50,18 +50,18 @@
               @click="emit('pick-library', entry.id)"
             >
               <span class="font-medium">{{ entry.title }}</span>
-              <span v-if="entry.composer" class="text-xs text-[var(--color-text-muted)]">{{ entry.composer }}</span>
+              <span v-if="entry.composer" class="text-xs text-text-muted">{{ entry.composer }}</span>
             </button>
-            <p v-if="!libraryEntries.length" class="text-xs text-[var(--color-text-muted)] italic">
+            <p v-if="!libraryEntries.length" class="text-xs text-text-muted italic">
               Bibliothèque vide.
             </p>
           </div>
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-[var(--color-text-muted)]">
-        <span class="chip">🎹 88 touches</span>
-        <span class="chip">⏯️ Espace = play / pause</span>
+      <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-[11px] sm:text-xs text-text-muted">
+        <span class="chip">🎹 Auto-fit</span>
+        <span class="chip">🎓 Mode entraînement MIDI</span>
         <span class="chip">🐢 Vitesse réglable</span>
         <span class="chip">🎬 Export vidéo</span>
       </div>
