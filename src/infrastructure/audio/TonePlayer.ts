@@ -6,14 +6,15 @@ import type { Song } from '../../domain/Song';
 /**
  * Adaptateur du port AudioPlayerPort basé sur Tone.js.
  *
- * Le Tone.Transport sert de chronomètre maître : sa position en secondes est
+ * Le Transport Tone sert de chronomètre maître : sa position en secondes est
  * également exposée comme « temps musical » au reste de l'application, ce qui
  * permet de garder le rendu et l'audio rigoureusement synchronisés quelle que
  * soit la vitesse choisie (la vitesse est implémentée comme un changement de
  * BPM du Transport).
  */
 export class TonePlayer implements AudioPlayerPort {
-  private synth: Tone.PolySynth;
+  private readonly synth: Tone.PolySynth;
+  private readonly transport = Tone.getTransport();
   private streamDestination: MediaStreamAudioDestinationNode | null = null;
 
   constructor() {
@@ -25,13 +26,13 @@ export class TonePlayer implements AudioPlayerPort {
   }
 
   load(song: Song): void {
-    Tone.Transport.cancel();
-    Tone.Transport.stop();
-    Tone.Transport.position = 0;
+    this.transport.cancel();
+    this.transport.stop();
+    this.transport.position = 0;
 
     for (const n of song.notes) {
       if (!isInRange(n.midi)) continue;
-      Tone.Transport.schedule((time) => {
+      this.transport.schedule((time) => {
         this.synth.triggerAttackRelease(
           Tone.Frequency(n.midi, 'midi').toNote(),
           Math.max(0.05, n.duration),
@@ -44,28 +45,28 @@ export class TonePlayer implements AudioPlayerPort {
 
   async play(): Promise<void> {
     await Tone.start();
-    Tone.Transport.start();
+    this.transport.start();
   }
 
   pause(): void {
-    Tone.Transport.pause();
+    this.transport.pause();
   }
 
   stop(): void {
-    Tone.Transport.stop();
-    Tone.Transport.position = 0;
+    this.transport.stop();
+    this.transport.position = 0;
   }
 
   setRate(rate: number): void {
-    Tone.Transport.bpm.value = 120 * rate;
+    this.transport.bpm.value = 120 * rate;
   }
 
   getCurrentTime(): number {
-    return Tone.Transport.seconds;
+    return this.transport.seconds;
   }
 
   isPlaying(): boolean {
-    return Tone.Transport.state === 'started';
+    return this.transport.state === 'started';
   }
 
   captureStream(): MediaStream {
@@ -79,8 +80,8 @@ export class TonePlayer implements AudioPlayerPort {
   }
 
   dispose(): void {
-    Tone.Transport.cancel();
-    Tone.Transport.stop();
+    this.transport.cancel();
+    this.transport.stop();
     this.synth.dispose();
   }
 }
