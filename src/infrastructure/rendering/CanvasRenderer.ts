@@ -4,21 +4,34 @@ import { isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/Pian
 import { computeKeyboardLayout, type KeyboardLayout, noteCenterX } from './canvasGeometry';
 
 const COLORS = {
-  bg: '#0d0d10',
-  whiteKey: '#fafafa',
-  blackKey: '#222',
+  bgTop: '#08060f',
+  bgBottom: '#0e0a18',
+  whiteKeyTop: '#ffffff',
+  whiteKeyBottom: '#dcd9e4',
+  blackKeyTop: '#3a3650',
+  blackKeyBottom: '#15121e',
   keyBorder: '#000',
-  hitLine: '#e74c3c',
-  noteRight: { fill: '#3fa34d', stroke: '#2d7a39' },
-  noteLeft: { fill: '#3a7bd5', stroke: '#2a5ba0' },
-  noteRightBlack: { fill: '#2f7a3a', stroke: '#1f5527' },
-  noteLeftBlack: { fill: '#2c5fa3', stroke: '#1d447a' },
-  activeLeftWhite: '#a9c8ee',
-  activeRightWhite: '#b3e6bb',
-  activeLeftBlack: '#3a6ea8',
-  activeRightBlack: '#2d7a39',
-  middleC: '#e74c3c',
-  octaveLabel: '#777',
+  hitLine: '#ff3d57',
+  hitLineGlow: 'rgba(255, 61, 87, 0.55)',
+  // Notes : dégradé du sommet (clair, lumineux) vers le bas (saturé) +
+  // halo discret pour donner du volume.
+  noteRightTop: '#7be58a',
+  noteRightBottom: '#27a83a',
+  noteRightStroke: '#1d7d2c',
+  noteLeftTop: '#83b9ff',
+  noteLeftBottom: '#2c6fd9',
+  noteLeftStroke: '#1f4c9c',
+  noteRightBlackTop: '#5fc771',
+  noteRightBlackBottom: '#1a7c2a',
+  noteLeftBlackTop: '#6699e8',
+  noteLeftBlackBottom: '#1f4f9a',
+  activeLeftWhite: '#bfd8ff',
+  activeRightWhite: '#c3eecc',
+  activeLeftBlack: '#4a87d6',
+  activeRightBlack: '#3aa14b',
+  middleC: '#ff3d57',
+  octaveLabel: '#a8a4b6',
+  noteLabel: 'rgba(255, 255, 255, 0.95)',
 } as const;
 
 type ActiveMap = Map<number, 'left' | 'right'>;
@@ -107,13 +120,11 @@ export class CanvasRenderer implements RendererPort {
       this.keyboardCacheKey = cacheKey;
     }
 
-    ctx.fillStyle = COLORS.bg;
-    ctx.fillRect(0, 0, width, height);
+    paintBackground(ctx, width, height);
 
     drawFallingNotes(ctx, layout, fallZoneHeight, notes, state.currentTime, state.lookAhead);
 
-    ctx.fillStyle = COLORS.hitLine;
-    ctx.fillRect(0, fallZoneHeight - 2, width, 3);
+    paintHitLine(ctx, width, fallZoneHeight);
 
     // Coup principal du gain : 1 drawImage au lieu de 88+ rectangles.
     if (this.keyboardCache) {
@@ -170,6 +181,28 @@ function computeActiveMidi(notes: readonly PianoNote[], currentTime: number): Ac
   return map;
 }
 
+function paintBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  grad.addColorStop(0, COLORS.bgTop);
+  grad.addColorStop(1, COLORS.bgBottom);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function paintHitLine(ctx: CanvasRenderingContext2D, width: number, y: number): void {
+  // Halo diffus sous la ligne (sans coût significatif : un seul fillRect avec
+  // un gradient vertical)
+  const halo = ctx.createLinearGradient(0, y - 14, 0, y);
+  halo.addColorStop(0, 'rgba(255, 61, 87, 0)');
+  halo.addColorStop(1, COLORS.hitLineGlow);
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, y - 14, width, 14);
+
+  // Ligne nette par-dessus
+  ctx.fillStyle = COLORS.hitLine;
+  ctx.fillRect(0, y - 1.5, width, 2);
+}
+
 function buildKeyboardCache(
   layout: KeyboardLayout,
   width: number,
@@ -183,39 +216,74 @@ function buildKeyboardCache(
   if (!ctx) return cache;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const blackHeight = keyboardHeight * 0.6;
+  const blackHeight = keyboardHeight * 0.62;
 
-  // Touches blanches + bordures + étiquettes d'octave
+  // Dégradés réutilisés pour toutes les touches : on les crée une seule fois.
+  const whiteGrad = ctx.createLinearGradient(0, 0, 0, keyboardHeight);
+  whiteGrad.addColorStop(0, COLORS.whiteKeyTop);
+  whiteGrad.addColorStop(1, COLORS.whiteKeyBottom);
+
+  const blackGrad = ctx.createLinearGradient(0, 0, 0, blackHeight);
+  blackGrad.addColorStop(0, COLORS.blackKeyTop);
+  blackGrad.addColorStop(1, COLORS.blackKeyBottom);
+
+  // Touches blanches : remplissage en dégradé + ombre subtile en bas
   for (const key of layout.keys) {
     if (key.isBlack) continue;
-    ctx.fillStyle = COLORS.whiteKey;
+    ctx.fillStyle = whiteGrad;
     ctx.fillRect(key.x, 0, key.width, keyboardHeight);
+
     ctx.strokeStyle = COLORS.keyBorder;
     ctx.lineWidth = 1;
-    ctx.strokeRect(key.x, 0, key.width, keyboardHeight);
+    ctx.strokeRect(key.x + 0.5, 0.5, key.width - 1, keyboardHeight - 1);
+
+    // Liseré coloré en bas de la touche, accent musical
+    ctx.fillStyle = 'rgba(124, 58, 237, 0.18)';
+    ctx.fillRect(key.x, keyboardHeight - 3, key.width, 3);
 
     if (key.midi % 12 === 0) {
       ctx.fillStyle = COLORS.octaveLabel;
-      ctx.font = '10px system-ui, sans-serif';
+      ctx.font = "600 10px 'Inter Variable', system-ui, sans-serif";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, keyboardHeight - 4);
+      ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, keyboardHeight - 6);
     }
   }
 
-  // Touches noires
+  // Ombre portée des touches noires (avant les touches noires elles-mêmes)
   for (const key of layout.keys) {
     if (!key.isBlack) continue;
-    ctx.fillStyle = COLORS.blackKey;
-    ctx.fillRect(key.x, 0, key.width, blackHeight);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(key.x - 1, 0, key.width + 2, blackHeight + 4);
   }
 
-  // Repère Do central (C4 = 60)
+  // Touches noires en dégradé + reflet
+  for (const key of layout.keys) {
+    if (!key.isBlack) continue;
+    ctx.fillStyle = blackGrad;
+    ctx.fillRect(key.x, 0, key.width, blackHeight);
+
+    // Reflet horizontal très subtil au sommet
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fillRect(key.x + 1, 1, key.width - 2, 2);
+  }
+
+  // Repère Do central (C4 = 60) : pastille avec léger halo
   const c4 = layout.keys.find((k) => k.midi === 60);
   if (c4) {
+    const cx = c4.x + c4.width / 2;
+    const cy = keyboardHeight - 16;
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, 7);
+    halo.addColorStop(0, 'rgba(255, 61, 87, 0.55)');
+    halo.addColorStop(1, 'rgba(255, 61, 87, 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.fillStyle = COLORS.middleC;
     ctx.beginPath();
-    ctx.arc(c4.x + c4.width / 2, keyboardHeight - 14, 3, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -229,27 +297,46 @@ function drawActiveKeysOverlay(
   keyboardHeight: number,
   active: ActiveMap,
 ): void {
-  const blackHeight = keyboardHeight * 0.6;
+  const blackHeight = keyboardHeight * 0.62;
 
   for (const key of layout.keys) {
     const hand = active.get(key.midi);
     if (!hand) continue;
 
     if (key.isBlack) {
+      // Halo doux autour de la touche pour donner l'impression qu'elle s'allume
+      ctx.fillStyle = hand === 'left' ? 'rgba(74, 135, 214, 0.35)' : 'rgba(58, 161, 75, 0.35)';
+      ctx.fillRect(key.x - 3, yOffset - 4, key.width + 6, blackHeight + 4);
+
       ctx.fillStyle = hand === 'left' ? COLORS.activeLeftBlack : COLORS.activeRightBlack;
       ctx.fillRect(key.x, yOffset, key.width, blackHeight);
+
+      // Reflet brillant
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+      ctx.fillRect(key.x + 1, yOffset + 1, key.width - 2, 2);
     } else {
-      // On garde la bordure existante du cache : on remplit l'intérieur uniquement.
-      ctx.fillStyle = hand === 'left' ? COLORS.activeLeftWhite : COLORS.activeRightWhite;
+      // Glow vertical sur l'intérieur de la touche blanche active
+      const grad = ctx.createLinearGradient(0, yOffset, 0, yOffset + keyboardHeight);
+      grad.addColorStop(0, hand === 'left' ? COLORS.activeLeftWhite : COLORS.activeRightWhite);
+      grad.addColorStop(1, hand === 'left' ? '#dceaff' : '#daf3df');
+      ctx.fillStyle = grad;
       ctx.fillRect(key.x + 1, yOffset + 1, key.width - 2, keyboardHeight - 2);
+
+      // Liseré coloré renforcé en bas
+      ctx.fillStyle = hand === 'left' ? 'rgba(58, 123, 213, 0.65)' : 'rgba(63, 163, 77, 0.65)';
+      ctx.fillRect(key.x, yOffset + keyboardHeight - 3, key.width, 3);
 
       // Restaure l'étiquette d'octave si présente sur cette touche
       if (key.midi % 12 === 0) {
         ctx.fillStyle = COLORS.octaveLabel;
-        ctx.font = '10px system-ui, sans-serif';
+        ctx.font = "600 10px 'Inter Variable', system-ui, sans-serif";
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, yOffset + keyboardHeight - 4);
+        ctx.fillText(
+          `C${octaveOf(key.midi)}`,
+          key.x + key.width / 2,
+          yOffset + keyboardHeight - 6,
+        );
       }
     }
   }
@@ -271,7 +358,7 @@ function drawFallingNotes(
     if (note.midi < layout.firstMidi || note.midi > layout.lastMidi) continue;
 
     const isBlack = isBlackKey(note.midi);
-    const w = isBlack ? layout.blackWidth : layout.whiteWidth * 0.95;
+    const w = isBlack ? layout.blackWidth : layout.whiteWidth * 0.92;
     const cx = noteCenterX(note.midi, layout);
     const x = cx - w / 2;
 
@@ -279,25 +366,45 @@ function drawFallingNotes(
     const h = note.duration * pxPerSecond;
     const yTop = yBottom - h;
 
-    const palette =
-      note.hand === 'right'
-        ? isBlack
-          ? COLORS.noteRightBlack
-          : COLORS.noteRight
-        : isBlack
-          ? COLORS.noteLeftBlack
-          : COLORS.noteLeft;
+    const isRight = note.hand === 'right';
+    const topColor = isRight
+      ? isBlack
+        ? COLORS.noteRightBlackTop
+        : COLORS.noteRightTop
+      : isBlack
+        ? COLORS.noteLeftBlackTop
+        : COLORS.noteLeftTop;
+    const bottomColor = isRight
+      ? isBlack
+        ? COLORS.noteRightBlackBottom
+        : COLORS.noteRightBottom
+      : isBlack
+        ? COLORS.noteLeftBlackBottom
+        : COLORS.noteLeftBottom;
+    const strokeColor = isRight ? COLORS.noteRightStroke : COLORS.noteLeftStroke;
 
-    roundedRect(ctx, x, yTop, w, h, 6);
-    ctx.fillStyle = palette.fill;
+    // Forme arrondie + dégradé vertical : plus clair en haut (la note arrive
+    // de la fenêtre lumineuse), plus saturé près du clavier.
+    roundedRect(ctx, x, yTop, w, h, 7);
+    const grad = ctx.createLinearGradient(0, yTop, 0, yBottom);
+    grad.addColorStop(0, topColor);
+    grad.addColorStop(1, bottomColor);
+    ctx.fillStyle = grad;
     ctx.fill();
-    ctx.strokeStyle = palette.stroke;
-    ctx.lineWidth = 1.5;
+
+    // Reflet brillant le long du bord supérieur
+    if (h > 14) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.fillRect(x + 2, yTop + 2, w - 4, 1.5);
+    }
+
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.25;
     ctx.stroke();
 
-    if (h > 24 && !isBlack) {
-      ctx.fillStyle = '#fff';
-      ctx.font = '600 12px system-ui, sans-serif';
+    if (h > 28 && !isBlack) {
+      ctx.fillStyle = COLORS.noteLabel;
+      ctx.font = "600 12px 'Inter Variable', system-ui, sans-serif";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(midiToNoteName(note.midi), x + w / 2, yBottom - 12);

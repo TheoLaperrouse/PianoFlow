@@ -13,8 +13,8 @@
   --color-text: #ece9ff;
   --color-text-muted: #b6afd2;
 
-  --font-display: 'Outfit', 'Inter', system-ui, sans-serif;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Outfit Variable', 'Outfit', 'Inter Variable', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', system-ui, sans-serif;
 }
 
 @layer base {
