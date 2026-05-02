@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/TheoLaperrouse/PianoFlow/compare/v1.0.0...v1.0.1) (2026-05-02)
+
+### 🐛 Corrections
+
+* **lint:** use Biome 2.2+ folder ignore syntax ([3928a2e](https://github.com/TheoLaperrouse/PianoFlow/commit/3928a2eed90a555672378215c7fbffae6843128d))
+
 ## 1.0.0 (2026-05-02)
 
 ### ✨ Fonctionnalités
