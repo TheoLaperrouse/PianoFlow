@@ -4,8 +4,9 @@
   --color-bg: #07060d;
   --color-bg-soft: #0f0d1a;
   --color-surface: rgba(20, 18, 36, 0.7);
-  --color-surface-strong: rgba(28, 25, 50, 0.9);
+  --color-surface-strong: rgba(28, 25, 50, 0.92);
   --color-border: rgba(120, 110, 200, 0.18);
+  --color-border-soft: rgba(140, 130, 220, 0.12);
   --color-accent: #a78bfa;
   --color-accent-strong: #7c3aed;
   --color-left: #3b82f6;
@@ -15,20 +16,24 @@
 
   --font-display: 'Outfit Variable', 'Outfit', 'Inter Variable', system-ui, sans-serif;
   --font-sans: 'Inter Variable', 'Inter', system-ui, sans-serif;
+
+  --shadow-glow-violet: 0 12px 32px -12px rgba(124, 58, 237, 0.55);
+  --shadow-glow-emerald: 0 12px 32px -12px rgba(34, 197, 94, 0.45);
+  --shadow-elevated: 0 18px 40px -16px rgba(0, 0, 0, 0.55);
 }
 
 @layer base {
   :root {
     color-scheme: dark;
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   html,
   body,
   #app {
     margin: 0;
-    /* `dvh` suit la barre d'URL mobile (safari/chrome) qui se rétracte ;
-       fallback `vh` pour les vieux navigateurs. */
     height: 100vh;
     height: 100dvh;
     background: var(--color-bg);
@@ -37,17 +42,20 @@
 
   body {
     overflow: hidden;
-    /* Empêche la double-tape pour zoomer sur iOS et le pull-to-refresh. */
     touch-action: manipulation;
     overscroll-behavior: none;
+    /* Fond riche, en plusieurs couches : ambiances colorées qui dérivent
+       lentement, grain subtil, vignette discrète. Donne un aspect "verre
+       teinté" très moderne sans coûter cher en perf (background statique,
+       composé une fois par le compositeur). */
     background:
-      radial-gradient(circle at 15% 20%, rgba(124, 58, 237, 0.25), transparent 40%),
-      radial-gradient(circle at 85% 80%, rgba(34, 197, 94, 0.18), transparent 45%),
-      radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.15), transparent 60%),
-      var(--color-bg);
+      radial-gradient(ellipse 60% 50% at 12% 18%, rgba(124, 58, 237, 0.32), transparent 60%),
+      radial-gradient(ellipse 70% 60% at 90% 85%, rgba(34, 197, 94, 0.18), transparent 60%),
+      radial-gradient(ellipse 50% 50% at 60% 40%, rgba(59, 130, 246, 0.18), transparent 65%),
+      radial-gradient(ellipse 80% 80% at 50% 100%, rgba(0, 0, 0, 0.5), transparent 70%),
+      linear-gradient(180deg, #07060d 0%, #0a0814 60%, #07060d 100%);
   }
 
-  /* Encoches iOS / barres système Android */
   #app {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
@@ -59,54 +67,120 @@
   h2,
   h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
   }
 
   button {
     font: inherit;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Respecte la préférence "mouvement réduit" du système */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
   .glass {
     background: var(--color-surface);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
     border: 1px solid var(--color-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 1px 0 rgba(0, 0, 0, 0.4);
   }
 
   .glass-strong {
     background: var(--color-surface-strong);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid var(--color-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      var(--shadow-elevated);
   }
 
-  /* min-h-11 = 44 px : cible tactile minimale Apple HIG / Material */
+  /* Boutons — base commune (44 px Apple HIG / Material) */
+  .btn-ghost,
+  .btn-record,
+  .btn-primary,
+  .btn-icon {
+    @apply transition-all duration-200 cursor-pointer select-none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .btn-ghost:active:not(:disabled),
+  .btn-record:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-icon:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 min-h-11 text-sm font-medium
-           transition-all duration-200 cursor-pointer select-none
-           text-[var(--color-text)] bg-white/5 border border-white/10
-           hover:bg-white/10 hover:border-white/20 active:bg-white/15
+           text-text bg-white/5 border border-white/10
+           hover:bg-white/10 hover:border-white/20
            disabled:opacity-40 disabled:cursor-not-allowed;
   }
 
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 min-h-11 text-sm font-semibold
-           transition-all duration-200 cursor-pointer select-none text-white border border-transparent
+           text-white border border-white/10
            disabled:opacity-40 disabled:cursor-not-allowed;
-    background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 50%, #22c55e 100%);
-    box-shadow: 0 8px 24px -8px rgba(124, 58, 237, 0.6);
+    background: #7c3aed;
+    box-shadow:
+      var(--shadow-glow-violet),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.3);
   }
 
   .btn-primary:hover:not(:disabled) {
-    box-shadow: 0 12px 30px -8px rgba(124, 58, 237, 0.8);
+    background: #8b5cf6;
+    box-shadow:
+      0 16px 40px -10px rgba(124, 58, 237, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.3);
     transform: translateY(-1px);
+  }
+
+  /* Variante Play XL : grosse pastille gradient circulaire */
+  .btn-play-xl {
+    @apply inline-flex items-center justify-center text-white font-semibold
+           rounded-2xl text-base
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-200 cursor-pointer select-none;
+    -webkit-tap-highlight-color: transparent;
+    background:
+      linear-gradient(135deg, #8b5cf6 0%, #a78bfa 50%, #22c55e 100%),
+      radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.18), transparent 50%);
+    box-shadow:
+      0 18px 40px -12px rgba(139, 92, 246, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+  }
+
+  .btn-play-xl:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.01);
+    box-shadow:
+      0 22px 48px -12px rgba(139, 92, 246, 0.85),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+  }
+
+  .btn-play-xl:active:not(:disabled) {
+    transform: scale(0.97);
   }
 
   .btn-record {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 min-h-11 text-sm font-medium
-           transition-all duration-200 cursor-pointer select-none
            bg-rose-500/20 text-rose-200 border border-rose-400/30
            hover:bg-rose-500/30 hover:border-rose-400/50
            disabled:opacity-40 disabled:cursor-not-allowed;
@@ -114,47 +188,125 @@
 
   .btn-icon {
     @apply inline-flex items-center justify-center rounded-xl size-11
-           text-[var(--color-text)] bg-white/5 border border-white/10
-           hover:bg-white/10 active:bg-white/15
-           disabled:opacity-40 disabled:cursor-not-allowed
-           transition-all cursor-pointer select-none;
+           text-text bg-white/5 border border-white/10
+           hover:bg-white/10
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  /* Card cliquable au look "soulevable" */
+  .card-clickable {
+    @apply relative overflow-hidden rounded-2xl p-6 cursor-pointer text-left
+           transition-all duration-300;
+    background: var(--color-surface-strong);
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid var(--color-border);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      var(--shadow-elevated);
+  }
+
+  .card-clickable::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.12), rgba(34, 197, 94, 0.1));
+    transition: opacity 0.3s ease;
+  }
+
+  .card-clickable:hover {
+    transform: translateY(-2px);
+    border-color: rgba(167, 139, 250, 0.45);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 24px 48px -16px rgba(124, 58, 237, 0.4);
+  }
+
+  .card-clickable:hover::before {
+    opacity: 1;
   }
 
   .chip {
     @apply inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full
-           bg-white/5 border border-white/10 text-[var(--color-text-muted)];
+           bg-white/5 border border-white/10 text-text-muted backdrop-blur-md;
+  }
+
+  .chip-note {
+    @apply inline-flex items-center justify-center px-2 py-0.5 rounded-md font-mono font-semibold text-xs
+           transition-all duration-200;
+    background: rgba(167, 139, 250, 0.18);
+    color: #d8c8ff;
+    border: 1px solid rgba(167, 139, 250, 0.4);
+  }
+
+  .chip-note-struck {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.4), rgba(74, 222, 128, 0.3));
+    color: #d8fdde;
+    border-color: rgba(74, 222, 128, 0.6);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15), 0 4px 12px -2px rgba(34, 197, 94, 0.4);
+    transform: scale(1.05);
   }
 
   .field-select {
-    @apply rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-[var(--color-text)]
-           outline-none cursor-pointer hover:bg-white/10 focus:border-[var(--color-accent)]/60;
+    @apply rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-text
+           outline-none cursor-pointer hover:bg-white/10 focus:border-accent/60
+           transition-all duration-200;
+  }
+
+  /* Le menu déroulant (option) est rendu par le système : forcer un contraste
+     correct quel que soit le thème. */
+  .field-select option,
+  select option {
+    background-color: #1a1830;
+    color: #ece9ff;
   }
 
   .field-range {
-    @apply h-1 w-28 rounded-full bg-white/10 appearance-none cursor-pointer;
+    @apply h-1.5 w-28 rounded-full appearance-none cursor-pointer;
+    background: linear-gradient(90deg, rgba(167, 139, 250, 0.5), rgba(255, 255, 255, 0.1));
   }
 
   .field-range::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     border-radius: 9999px;
-    background: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.25);
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    box-shadow:
+      0 0 0 3px rgba(167, 139, 250, 0.25),
+      0 2px 8px rgba(124, 58, 237, 0.5);
     cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .field-range::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
   }
 
   .field-range::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     border-radius: 9999px;
-    background: var(--color-accent);
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
     border: none;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.5);
+  }
+
+  /* Logo mark inline */
+  .brand-mark {
+    @apply inline-flex items-center justify-center rounded-xl shrink-0;
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa, #22c55e);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      0 6px 16px -6px rgba(139, 92, 246, 0.7);
   }
 }
 
-/* Animations des clés de musique flottantes en fond */
+/* Symboles musicaux flottants en fond */
 @keyframes float-up {
   0% {
     transform: translateY(110vh) translateX(0) rotate(-12deg);
@@ -179,4 +331,37 @@
   color: var(--color-accent);
   text-shadow: 0 0 24px rgba(167, 139, 250, 0.35);
   user-select: none;
+  font-family: var(--font-display);
+}
+
+/* Gloss "shimmer" pour mettre en valeur le titre */
+@keyframes title-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.title-shimmer {
+  background: linear-gradient(
+    90deg,
+    #ddd6fe 0%,
+    #c4b5fd 25%,
+    #86efac 50%,
+    #c4b5fd 75%,
+    #ddd6fe 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: title-shimmer 8s ease-in-out infinite;
+}
+
+/* Pulse subtil pour les indicateurs "live" */
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.92); }
+}
+
+.dot-live {
+  animation: soft-pulse 1.6s ease-in-out infinite;
 }
