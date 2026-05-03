@@ -115,7 +115,17 @@ export class TonePlayer implements AudioPlayerPort {
   }
 
   getCurrentTime(): number {
-    return this.transport.seconds;
+    // Compensation de la latence de sortie audio : `transport.seconds` reflète
+    // la position planifiée par le scheduler, mais le son n'atteint vraiment
+    // les enceintes qu'après le buffer matériel (~50–200 ms selon le système).
+    // Sans cette correction, le rendu visuel devance le son, surtout à vitesse
+    // normale (à x0.25 le décalage est divisé par 4 et passe inaperçu).
+    const ctx = Tone.getContext().rawContext as AudioContext;
+    const outputLatency = ctx.outputLatency || ctx.baseLatency || 0;
+    // Le transport est exprimé en « temps musical » : on convertit la latence
+    // wall-clock en temps musical via le rate courant (rate = bpm / 120).
+    const rate = this.transport.bpm.value / 120;
+    return this.transport.seconds - outputLatency * rate;
   }
 
   isPlaying(): boolean {
