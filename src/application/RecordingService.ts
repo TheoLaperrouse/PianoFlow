@@ -4,6 +4,12 @@ import type { RendererPort } from './ports/RendererPort';
 import type { VideoRecorderPort } from './ports/VideoRecorderPort';
 
 const VIDEO_FPS = 60;
+const INTRO_DURATION_MS = 3500;
+
+export interface RecordOptions {
+  /** Affiche un cartouche titre + artiste en intro de la vidéo. */
+  intro?: { title: string; subtitle?: string };
+}
 
 /**
  * Use case applicatif : enregistre un export vidéo du morceau courant.
@@ -34,8 +40,11 @@ export class RecordingService {
    * Joue le morceau du début à la fin tout en l'enregistrant. Résout avec le
    * Blob vidéo. Si la lecture est en cours, elle est d'abord arrêtée et
    * remise au début.
+   *
+   * Si `options.intro` est fourni, un cartouche titre + artiste est affiché en
+   * fondu pendant ~3,5 s avant que le morceau ne commence.
    */
-  async record(): Promise<Blob> {
+  async record(options: RecordOptions = {}): Promise<Blob> {
     const renderer = this.renderer();
     const song = this.playback.getCurrentSong();
     if (!renderer || !song) throw new Error('Aucun morceau chargé');
@@ -51,6 +60,17 @@ export class RecordingService {
     ]);
 
     this.recorder.start(combined);
+
+    if (options.intro) {
+      renderer.beginIntro({
+        title: options.intro.title,
+        subtitle: options.intro.subtitle,
+        durationMs: INTRO_DURATION_MS,
+      });
+      await wait(INTRO_DURATION_MS);
+      renderer.endIntro();
+    }
+
     await this.playback.play();
 
     await waitUntilEndOfSong(this.playback, song.duration);
@@ -62,6 +82,10 @@ export class RecordingService {
   isRecording(): boolean {
     return this.recorder.isRecording();
   }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function waitUntilEndOfSong(playback: PlaybackService, duration: number): Promise<void> {

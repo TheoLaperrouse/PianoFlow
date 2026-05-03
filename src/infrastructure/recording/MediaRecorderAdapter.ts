@@ -6,6 +6,12 @@ const PREFERRED_MIME_TYPES = [
   'video/webm',
 ] as const;
 
+// Cible « YouTube friendly » : ~12 Mb/s en VP9 (équivalent ~8 Mb/s H.264 1080p)
+// + audio Opus 192 kb/s. Suffisamment haut pour ne pas voir de compression sur
+// les notes qui défilent, sans exploser le RAM/disque pour des morceaux longs.
+const VIDEO_BITS_PER_SECOND = 12_000_000;
+const AUDIO_BITS_PER_SECOND = 192_000;
+
 /**
  * Adaptateur du VideoRecorderPort basé sur l'API MediaRecorder du navigateur.
  * Encode en WebM (VP9/VP8 + Opus selon le support).
@@ -18,7 +24,11 @@ export class MediaRecorderAdapter implements VideoRecorderPort {
   start(stream: MediaStream): void {
     this.chunks = [];
     this.mimeType = pickMimeType();
-    this.recorder = new MediaRecorder(stream, { mimeType: this.mimeType });
+    this.recorder = new MediaRecorder(stream, {
+      mimeType: this.mimeType,
+      videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
+      audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+    });
     this.recorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.chunks.push(e.data);
     };
