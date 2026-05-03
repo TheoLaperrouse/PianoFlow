@@ -1,6 +1,6 @@
 <template>
   <div class="relative h-full w-full overflow-hidden">
-    <FloatingMusicSymbols />
+    <FloatingMusicSymbols v-if="view === 'home' || !song" />
 
     <Transition
       enter-active-class="transition-opacity duration-500"

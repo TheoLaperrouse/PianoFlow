@@ -1,7 +1,10 @@
 <template>
-  <div class="relative h-full w-full flex flex-col">
-    <!-- Top bar : minimal, toujours visible -->
-    <header class="glass m-2 sm:m-3 mb-2 rounded-2xl px-3 py-2 flex items-center gap-2">
+  <div class="relative h-full w-full flex flex-col" :class="{ 'is-fullscreen': fullscreen }">
+    <!-- Top bar : minimal, toujours visible (masquée en fullscreen) -->
+    <header
+      v-if="!fullscreen"
+      class="glass m-2 sm:m-3 mb-2 rounded-2xl px-3 py-2 flex items-center gap-2"
+    >
       <button class="btn-icon shrink-0" title="Retour au menu" @click="emit('back')">
         <span aria-hidden>←</span>
       </button>
@@ -15,13 +18,26 @@
         {{ formatTime(currentTime) }} / {{ formatTime(song.duration) }}
       </div>
 
+      <button
+        class="btn-icon shrink-0"
+        :title="loop ? 'Boucle activée' : 'Activer la boucle'"
+        :class="{ '!bg-violet-500/30 !border-violet-400/50': loop }"
+        @click="loop = !loop"
+      >
+        <span aria-hidden>🔁</span>
+      </button>
+
+      <button class="btn-icon shrink-0" title="Mode plein écran" @click="enterFullscreen">
+        <span aria-hidden>⛶</span>
+      </button>
+
       <button class="btn-icon shrink-0" title="Plus d'actions" @click="drawerOpen = true">
         <span aria-hidden>⋯</span>
       </button>
     </header>
 
     <!-- Practice panel — visible uniquement quand actif (mobile) ou toujours (desktop) -->
-    <div v-if="practiceActive || showPracticePanel" class="hidden md:block">
+    <div v-if="!fullscreen && (practiceActive || showPracticePanel)" class="hidden md:block">
       <PracticePanel
         :midi-supported="midiSupported"
         :devices-requested="devicesRequested"
@@ -39,7 +55,7 @@
 
     <!-- Sur mobile, bandeau ultra-compact des notes attendues quand le mode est actif -->
     <div
-      v-if="practiceActive && expectedMobile.length"
+      v-if="!fullscreen && practiceActive && expectedMobile.length"
       class="md:hidden glass mx-2 mb-2 rounded-2xl px-3 py-2 flex items-center gap-2 text-xs"
     >
       <span class="text-text-muted shrink-0">🎓 Joue :</span>
@@ -59,15 +75,29 @@
       </div>
     </div>
     <div
-      v-else-if="practiceActive"
+      v-else-if="!fullscreen && practiceActive"
       class="md:hidden glass mx-2 mb-2 rounded-2xl px-3 py-2 text-emerald-300 text-xs"
     >
       🎉 Bravo, morceau terminé !
     </div>
 
     <!-- Canvas (zone principale) -->
-    <div class="relative flex-1 mx-2 sm:mx-3 mb-2 rounded-2xl overflow-hidden glass-strong">
+    <div
+      class="relative flex-1 overflow-hidden glass-strong"
+      :class="fullscreen ? 'rounded-none border-0' : 'mx-2 sm:mx-3 mb-2 rounded-2xl'"
+    >
       <canvas ref="canvasRef" class="block touch-none"></canvas>
+
+      <!-- Bouton flottant pour quitter le fullscreen -->
+      <button
+        v-if="fullscreen"
+        class="absolute top-3 right-3 size-11 rounded-xl bg-black/40 backdrop-blur-md border border-white/15
+               text-white/85 hover:bg-black/60 transition-colors z-10"
+        title="Quitter le plein écran (Échap)"
+        @click="exitFullscreen"
+      >
+        <span aria-hidden>✕</span>
+      </button>
       <div
         class="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-emerald-500 transition-all duration-200"
         :style="{ width: `${progress()}%` }"
@@ -83,8 +113,9 @@
       </div>
     </div>
 
-    <!-- Bottom bar : Play XL + sélecteurs compacts -->
+    <!-- Bottom bar : Play XL + sélecteurs compacts (masquée en fullscreen) -->
     <div
+      v-if="!fullscreen"
       class="glass mx-2 sm:mx-3 mb-2 rounded-2xl px-3 py-2 flex items-center gap-2 text-xs flex-wrap"
     >
       <button
@@ -136,6 +167,10 @@
         <button class="btn-record w-full justify-center" :disabled="isRecording" @click="exportVideo">
           {{ isRecording ? '⏺  Enregistrement…' : '🎬  Exporter en vidéo' }}
         </button>
+        <label class="flex items-center justify-between gap-3 px-1 py-1 text-sm">
+          <span>Cartouche titre en intro</span>
+          <input v-model="includeIntro" type="checkbox" class="accent-violet-400 size-5" />
+        </label>
 
         <label class="btn-ghost w-full justify-center cursor-pointer">
           📁  Charger un autre fichier
@@ -161,6 +196,10 @@
           <span class="text-sm">Ajuster le clavier au morceau</span>
           <input v-model="fitToSong" type="checkbox" class="accent-violet-400 size-5" />
         </label>
+        <label class="flex items-center justify-between gap-3 px-1 py-2">
+          <span class="text-sm">Mode boucle</span>
+          <input v-model="loop" type="checkbox" class="accent-violet-400 size-5" />
+        </label>
       </div>
 
       <h3 class="text-sm font-display font-semibold mb-2 mt-4 text-text-muted">Mode entraînement</h3>
@@ -182,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { PlaybackService } from '../../application/PlaybackService';
 import type { PracticeService } from '../../application/PracticeService';
 import type { MidiInputDevice, MidiInputPort } from '../../application/ports/MidiInputPort';
@@ -222,6 +261,9 @@ const drawerOpen = ref(false);
 // les morceaux qui n'utilisent qu'une portion du clavier).
 const fitToSong = ref(true);
 const showPracticePanel = ref(true);
+const loop = ref(false);
+const fullscreen = ref(false);
+const includeIntro = ref(true);
 
 const midiSupported = ref(props.midiInput.isSupported());
 const devicesRequested = ref(false);
@@ -246,12 +288,17 @@ let renderer: RendererPort | null = null;
 let rafId: number | null = null;
 let unsubscribePractice: (() => void) | null = null;
 
-function loop() {
+function renderLoop() {
   if (renderer) {
     const t = props.playback.getCurrentTime();
     currentTime.value = t;
     if (!props.playback.isPlaying() && isPlaying.value) {
       isPlaying.value = false;
+    }
+    // Le Transport Tone ne s'arrête pas tout seul à la fin du morceau : on le
+    // détecte ici pour repartir du début (en boucle si demandé, sinon pause).
+    if (props.playback.isPlaying() && t >= props.song.duration) {
+      handleSongEnd();
     }
     renderer.render({
       song: props.song,
@@ -260,10 +307,25 @@ function loop() {
       keyRange: effectiveKeyRange.value,
     });
   }
-  rafId = requestAnimationFrame(loop);
+  rafId = requestAnimationFrame(renderLoop);
+}
+
+function handleSongEnd() {
+  props.playback.restart();
+  currentTime.value = 0;
+  if (loop.value) {
+    void props.playback.play().then(() => {
+      isPlaying.value = true;
+    });
+  }
 }
 
 function onKeyDown(e: KeyboardEvent) {
+  if (e.code === 'Escape' && fullscreen.value) {
+    e.preventDefault();
+    exitFullscreen();
+    return;
+  }
   if (e.code !== 'Space') return;
   const target = e.target as HTMLElement | null;
   if (target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName)) return;
@@ -271,9 +333,27 @@ function onKeyDown(e: KeyboardEvent) {
   togglePlay();
 }
 
+function enterFullscreen() {
+  fullscreen.value = true;
+  // Demande aussi le vrai fullscreen navigateur si dispo (mobile-friendly).
+  const el = document.documentElement;
+  if (el.requestFullscreen && !document.fullscreenElement) {
+    void el.requestFullscreen().catch(() => {
+      /* refus utilisateur ou non supporté : on conserve juste la version CSS */
+    });
+  }
+}
+
+function exitFullscreen() {
+  fullscreen.value = false;
+  if (document.fullscreenElement && document.exitFullscreen) {
+    void document.exitFullscreen().catch(() => {});
+  }
+}
+
 onMounted(() => {
   if (canvasRef.value) renderer = props.createRenderer(canvasRef.value);
-  rafId = requestAnimationFrame(loop);
+  rafId = requestAnimationFrame(renderLoop);
   window.addEventListener('keydown', onKeyDown);
   unsubscribePractice = props.practice.subscribe((state) => {
     practiceChordGroups.value = state.chordGroups;
@@ -314,6 +394,12 @@ function restart() {
 
 watch(rate, (r) => props.playback.setRate(r));
 
+watch(fullscreen, () => {
+  // Le canvas est en flex-1 : toggler le chrome change la place dispo. On
+  // attend le re-render Vue pour que le parent ait sa nouvelle taille.
+  void nextTick(() => renderer?.resize());
+});
+
 async function exportVideo() {
   if (isRecording.value) return;
   drawerOpen.value = false;
@@ -324,12 +410,13 @@ async function exportVideo() {
       rate.value = 1;
       props.playback.setRate(1);
     }
-    const blob = await props.recording.record();
+    const base = props.song.name.replace(/\.(mid|midi|mp3|wav|ogg|flac)$/i, '') || 'pianoflow';
+    const intro = includeIntro.value ? { title: base, subtitle: 'PianoFlow' } : undefined;
+    const blob = await props.recording.record({ intro });
     if (previousRate !== 1) {
       rate.value = previousRate;
       props.playback.setRate(previousRate);
     }
-    const base = props.song.name.replace(/\.(mid|midi|mp3|wav|ogg|flac)$/i, '') || 'pianoflow';
     downloadBlob(blob, `${base}.webm`);
     isPlaying.value = false;
   } catch (err) {
