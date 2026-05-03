@@ -1,4 +1,4 @@
-import type { RendererPort, RenderState } from '../../application/ports/RendererPort';
+import type { IntroOverlay, RendererPort, RenderState } from '../../application/ports/RendererPort';
 import { isBlackKey, midiToNoteName, octaveOf } from '../../domain/Keyboard';
 import { isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/PianoNote';
 import { computeKeyboardLayout, type KeyboardLayout, noteCenterX } from './canvasGeometry';
@@ -11,8 +11,8 @@ const COLORS = {
   blackKeyTop: '#3a3650',
   blackKeyBottom: '#15121e',
   keyBorder: '#000',
-  hitLine: '#ff3d57',
-  hitLineGlow: 'rgba(255, 61, 87, 0.55)',
+  hitLine: 'rgba(255, 61, 87, 0.85)',
+  hitLineGlow: 'rgba(255, 61, 87, 0.18)',
   // Notes : dégradé du sommet (clair, lumineux) vers le bas (saturé) +
   // halo discret pour donner du volume.
   noteRightTop: '#7be58a',
@@ -68,6 +68,8 @@ export class CanvasRenderer implements RendererPort {
 
   private lastFrameHash = '';
 
+  private intro: { overlay: IntroOverlay; startedAt: number } | null = null;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     // alpha:false → optimisation Chromium quand le canvas est opaque
@@ -101,6 +103,15 @@ export class CanvasRenderer implements RendererPort {
     const width = this.cssWidth;
     const height = this.cssHeight;
     if (width === 0 || height === 0) return;
+
+    // Mode « cartouche d'intro » (export vidéo) : on ignore l'état piano et on
+    // dessine titre + artiste avec un fondu in/hold/out. Cela écrase le canvas
+    // à chaque frame pour ne pas être recouvert par les rendus normaux.
+    if (this.intro) {
+      paintIntro(ctx, width, height, this.intro);
+      this.lastFrameHash = '';
+      return;
+    }
 
     const keyboardHeight = Math.max(90, Math.min(180, height * 0.22));
     const fallZoneHeight = height - keyboardHeight;
@@ -138,6 +149,16 @@ export class CanvasRenderer implements RendererPort {
 
   captureStream(fps: number): MediaStream {
     return this.canvas.captureStream(fps);
+  }
+
+  beginIntro(overlay: IntroOverlay): void {
+    this.intro = { overlay, startedAt: performance.now() };
+    this.lastFrameHash = '';
+  }
+
+  endIntro(): void {
+    this.intro = null;
+    this.lastFrameHash = '';
   }
 
   dispose(): void {
@@ -190,17 +211,17 @@ function paintBackground(ctx: CanvasRenderingContext2D, width: number, height: n
 }
 
 function paintHitLine(ctx: CanvasRenderingContext2D, width: number, y: number): void {
-  // Halo diffus sous la ligne (sans coût significatif : un seul fillRect avec
-  // un gradient vertical)
-  const halo = ctx.createLinearGradient(0, y - 14, 0, y);
+  // Halo diffus, plus court et plus pâle que la version d'origine pour ne pas
+  // fatiguer les yeux pendant la lecture.
+  const halo = ctx.createLinearGradient(0, y - 8, 0, y);
   halo.addColorStop(0, 'rgba(255, 61, 87, 0)');
   halo.addColorStop(1, COLORS.hitLineGlow);
   ctx.fillStyle = halo;
-  ctx.fillRect(0, y - 14, width, 14);
+  ctx.fillRect(0, y - 8, width, 8);
 
-  // Ligne nette par-dessus
+  // Ligne fine par-dessus
   ctx.fillStyle = COLORS.hitLine;
-  ctx.fillRect(0, y - 1.5, width, 2);
+  ctx.fillRect(0, y - 1, width, 1.5);
 }
 
 function buildKeyboardCache(
@@ -315,12 +336,28 @@ function drawActiveKeysOverlay(
       ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
       ctx.fillRect(key.x + 1, yOffset + 1, key.width - 2, 2);
     } else {
-      // Glow vertical sur l'intérieur de la touche blanche active
+      // Sur la portion supérieure d'une blanche, des touches noires peuvent
+      // empiéter latéralement : on clippe le glow pour ne pas peindre sous une
+      // noire (sinon la blanche allumée déborde sur la noire voisine).
+      const half = layout.blackWidth / 2;
+      const padLeft = isBlackKey(key.midi - 1) ? half : 1;
+      const padRight = isBlackKey(key.midi + 1) ? half : 1;
+      const topX = key.x + padLeft;
+      const topW = Math.max(2, key.width - padLeft - padRight);
+
       const grad = ctx.createLinearGradient(0, yOffset, 0, yOffset + keyboardHeight);
       grad.addColorStop(0, hand === 'left' ? COLORS.activeLeftWhite : COLORS.activeRightWhite);
       grad.addColorStop(1, hand === 'left' ? '#dceaff' : '#daf3df');
       ctx.fillStyle = grad;
-      ctx.fillRect(key.x + 1, yOffset + 1, key.width - 2, keyboardHeight - 2);
+      // Zone haute (sous les noires éventuelles) — clipée horizontalement.
+      ctx.fillRect(topX, yOffset + 1, topW, blackHeight);
+      // Zone basse (toujours visible) — pleine largeur.
+      ctx.fillRect(
+        key.x + 1,
+        yOffset + blackHeight,
+        key.width - 2,
+        keyboardHeight - blackHeight - 1,
+      );
 
       // Liseré coloré renforcé en bas
       ctx.fillStyle = hand === 'left' ? 'rgba(58, 123, 213, 0.65)' : 'rgba(63, 163, 77, 0.65)';
@@ -332,11 +369,7 @@ function drawActiveKeysOverlay(
         ctx.font = "600 10px 'Inter Variable', system-ui, sans-serif";
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
-        ctx.fillText(
-          `C${octaveOf(key.midi)}`,
-          key.x + key.width / 2,
-          yOffset + keyboardHeight - 6,
-        );
+        ctx.fillText(`C${octaveOf(key.midi)}`, key.x + key.width / 2, yOffset + keyboardHeight - 6);
       }
     }
   }
@@ -358,9 +391,25 @@ function drawFallingNotes(
     if (note.midi < layout.firstMidi || note.midi > layout.lastMidi) continue;
 
     const isBlack = isBlackKey(note.midi);
-    const w = isBlack ? layout.blackWidth : layout.whiteWidth * 0.92;
     const cx = noteCenterX(note.midi, layout);
-    const x = cx - w / 2;
+    let x: number;
+    let w: number;
+    if (isBlack) {
+      w = layout.blackWidth;
+      x = cx - w / 2;
+    } else {
+      // Une touche blanche est partiellement recouverte par les touches noires
+      // adjacentes : on rétrécit la note de la moitié de la largeur d'une noire
+      // de chaque côté lorsqu'il y en a une. La surbrillance reste cantonnée à
+      // la zone strictement « blanche » de la touche.
+      const left = cx - layout.whiteWidth / 2;
+      const right = cx + layout.whiteWidth / 2;
+      const half = layout.blackWidth / 2;
+      const padLeft = isBlackKey(note.midi - 1) ? half : layout.whiteWidth * 0.04;
+      const padRight = isBlackKey(note.midi + 1) ? half : layout.whiteWidth * 0.04;
+      x = left + padLeft;
+      w = Math.max(2, right - padRight - x);
+    }
 
     const yBottom = fallZoneHeight - (note.time - currentTime) * pxPerSecond;
     const h = note.duration * pxPerSecond;
@@ -410,6 +459,57 @@ function drawFallingNotes(
       ctx.fillText(midiToNoteName(note.midi), x + w / 2, yBottom - 12);
     }
   }
+}
+
+function paintIntro(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  intro: { overlay: IntroOverlay; startedAt: number },
+): void {
+  const elapsed = performance.now() - intro.startedAt;
+  const total = intro.overlay.durationMs;
+  // Fondu in (15 %), maintien (70 %), fondu out (15 %).
+  const fadeIn = total * 0.15;
+  const fadeOut = total * 0.15;
+  let alpha = 1;
+  if (elapsed < fadeIn) alpha = elapsed / fadeIn;
+  else if (elapsed > total - fadeOut) alpha = Math.max(0, (total - elapsed) / fadeOut);
+
+  // Fond très sombre, identique au reste du rendu.
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, '#08060f');
+  bg.addColorStop(1, '#0e0a18');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  // Halo central diffus, dégradé violet → vert (cohérent avec la home).
+  const cx = width / 2;
+  const cy = height / 2;
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(width, height) * 0.6);
+  halo.addColorStop(0, `rgba(167, 139, 250, ${0.35 * alpha})`);
+  halo.addColorStop(0.5, `rgba(34, 197, 94, ${0.18 * alpha})`);
+  halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const titleSize = Math.min(96, Math.max(36, width * 0.07));
+  ctx.font = `700 ${titleSize}px 'Outfit Variable', 'Inter Variable', system-ui, sans-serif`;
+  ctx.fillStyle = '#ece9ff';
+  ctx.fillText(intro.overlay.title, cx, cy - titleSize * 0.3);
+
+  if (intro.overlay.subtitle) {
+    const subtitleSize = Math.max(18, titleSize * 0.45);
+    ctx.font = `500 ${subtitleSize}px 'Inter Variable', system-ui, sans-serif`;
+    ctx.fillStyle = '#b6afd2';
+    ctx.fillText(intro.overlay.subtitle, cx, cy + titleSize * 0.6);
+  }
+
+  ctx.globalAlpha = 1;
 }
 
 function roundedRect(

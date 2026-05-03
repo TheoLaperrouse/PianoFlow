@@ -16,6 +16,14 @@ export interface RenderState {
   readonly keyRange?: KeyRange | null;
 }
 
+/** Description d'un cartouche de titre superposé pendant l'export vidéo. */
+export interface IntroOverlay {
+  readonly title: string;
+  readonly subtitle?: string;
+  /** Durée totale du cartouche en millisecondes (fade-in + maintien + fade-out). */
+  readonly durationMs: number;
+}
+
 /**
  * Port (driven) — moteur de rendu. Implémentations possibles :
  * Canvas 2D, WebGL, SVG, ou un magnétoscope offline pour l'export vidéo.
@@ -26,5 +34,9 @@ export interface RendererPort {
   resize(): void;
   /** Flux vidéo destiné à un enregistreur (export vidéo). */
   captureStream(fps: number): MediaStream;
+  /** Active un cartouche de titre superposé (utilisé pour l'export vidéo). */
+  beginIntro(overlay: IntroOverlay): void;
+  /** Désactive le cartouche d'intro. */
+  endIntro(): void;
   dispose(): void;
 }
