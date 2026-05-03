@@ -5,9 +5,20 @@ import type { PianoNote } from '../../domain/PianoNote';
 import { createSong, type Song } from '../../domain/Song';
 
 const MIDDLE_C = 60;
-const ONSET_THRESHOLD = 0.5;
-const FRAME_THRESHOLD = 0.3;
-const MIN_NOTE_LENGTH = 5;
+// Seuils plus permissifs pour récupérer les notes faibles (détection
+// d'attaques douces) et durée minimum un peu plus haute pour filtrer les
+// faux-positifs courts. Empiriquement, ces réglages améliorent nettement
+// la transcription d'enregistrements piano au prix d'un léger sur-échantillon
+// de notes très courtes — tolérable.
+const ONSET_THRESHOLD = 0.3;
+const FRAME_THRESHOLD = 0.2;
+const MIN_NOTE_LENGTH = 11;
+// Plage piano (A0..C8) — restreindre la sortie au domaine cible évite que le
+// modèle propose des notes parasites en dehors du clavier.
+const MIN_FREQ_HZ = 27.5; // A0
+const MAX_FREQ_HZ = 4186; // C8
+const MELODIA_TRICK = true;
+const INFER_ONSETS = true;
 
 interface BasicPitchInstance {
   evaluateModel(
@@ -32,6 +43,10 @@ interface BasicPitchModule {
     onsetThresh: number,
     frameThresh: number,
     minNoteLen: number,
+    inferOnsets?: boolean,
+    maxFreq?: number | null,
+    minFreq?: number | null,
+    melodiaTrick?: boolean,
   ) => unknown;
   addPitchBendsToNoteEvents: (contours: number[][], notes: unknown) => unknown;
   noteFramesToTime: (notes: unknown) => NoteEvent[];
@@ -84,6 +99,10 @@ export class BasicPitchAudioParser implements SongParserPort {
       ONSET_THRESHOLD,
       FRAME_THRESHOLD,
       MIN_NOTE_LENGTH,
+      INFER_ONSETS,
+      MAX_FREQ_HZ,
+      MIN_FREQ_HZ,
+      MELODIA_TRICK,
     );
     const withPitchBends = mod.addPitchBendsToNoteEvents(contours, noteFrames);
     const noteEvents = mod.noteFramesToTime(withPitchBends);
