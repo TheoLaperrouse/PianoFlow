@@ -1,3 +1,4 @@
+import { isBlackKey } from './Keyboard';
 import type { PianoNote } from './PianoNote';
 import { endTime } from './PianoNote';
 
@@ -34,8 +35,14 @@ export function songKeyRange(
     if (n.midi < lo) lo = n.midi;
     if (n.midi > hi) hi = n.midi;
   }
-  return {
-    firstMidi: Math.max(21, lo - padding),
-    lastMidi: Math.min(108, hi + padding),
-  };
+  // On élargit puis on ramène les bornes sur la touche blanche la plus
+  // proche : un layout qui démarre/termine sur une touche noire produit une
+  // touche noire sans blanche parente, donc inaccessible visuellement.
+  let firstMidi = Math.max(21, lo - padding);
+  let lastMidi = Math.min(108, hi + padding);
+  while (firstMidi > 21 && isBlackKey(firstMidi)) firstMidi--;
+  while (lastMidi < 108 && isBlackKey(lastMidi)) lastMidi++;
+  if (isBlackKey(firstMidi)) firstMidi++;
+  if (isBlackKey(lastMidi)) lastMidi--;
+  return { firstMidi, lastMidi };
 }
