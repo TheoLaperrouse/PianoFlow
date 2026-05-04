@@ -59,7 +59,7 @@ jobs:
       - name: Build
         if: steps.semrel.outputs.new_release_published == 'true'
         env:
-          PIANOFLOW_BASE: /pianoflow/
+          PIANOFLOW_BASE: /PianoFlow/
         run: yarn build
 
       - name: Upload Pages artifact

@@ -4,10 +4,12 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // Le `base` est piloté par PIANOFLOW_BASE pour pouvoir le surcharger en CI.
-// Par défaut : `/pianoflow/` afin que le build fonctionne directement sur
-// GitHub Pages (https://<user>.github.io/pianoflow/).
+// Par défaut : `/PianoFlow/` afin que le build fonctionne directement sur
+// GitHub Pages (https://<user>.github.io/PianoFlow/). Les URLs Pages sont
+// sensibles à la casse, donc le segment doit matcher exactement le nom du
+// dépôt (`PianoFlow`).
 export default defineConfig(() => ({
-  base: process.env.PIANOFLOW_BASE ?? '/pianoflow/',
+  base: process.env.PIANOFLOW_BASE ?? '/PianoFlow/',
   plugins: [
     vue(),
     tailwindcss(),
