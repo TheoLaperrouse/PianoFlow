@@ -20,11 +20,11 @@
 
       <button
         class="btn-icon shrink-0"
-        :title="loop ? 'Boucle activée' : 'Activer la boucle'"
-        :class="{ '!bg-violet-500/30 !border-violet-400/50': loop }"
-        @click="loop = !loop"
+        :title="loopTitle"
+        :class="{ '!bg-violet-500/30 !border-violet-400/50': loopMode !== 'off' }"
+        @click="cycleLoopMode"
       >
-        <span aria-hidden>🔁</span>
+        <span aria-hidden>{{ loopIcon }}</span>
       </button>
 
       <button class="btn-icon shrink-0" title="Mode plein écran" @click="enterFullscreen">
@@ -196,10 +196,28 @@
           <span class="text-sm">Ajuster le clavier au morceau</span>
           <input v-model="fitToSong" type="checkbox" class="accent-violet-400 size-5" />
         </label>
-        <label class="flex items-center justify-between gap-3 px-1 py-2">
+        <div class="flex items-center justify-between gap-3 px-1 py-2">
           <span class="text-sm">Mode boucle</span>
-          <input v-model="loop" type="checkbox" class="accent-violet-400 size-5" />
-        </label>
+          <div class="flex items-center gap-1 rounded-lg bg-white/5 p-0.5 border border-white/10">
+            <button
+              v-for="opt in loopOptions"
+              :key="opt.value"
+              type="button"
+              class="px-2.5 py-1 rounded-md text-xs transition-colors"
+              :class="
+                loopMode === opt.value
+                  ? 'bg-violet-500/30 text-violet-100 border border-violet-400/50'
+                  : 'text-text-muted hover:text-white border border-transparent'
+              "
+              :disabled="opt.value === 'playlist' && !hasPlaylist"
+              :title="opt.label"
+              @click="loopMode = opt.value"
+            >
+              <span aria-hidden>{{ opt.icon }}</span>
+              <span class="ml-1">{{ opt.label }}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <h3 class="text-sm font-display font-semibold mb-2 mt-4 text-text-muted">Mode entraînement</h3>
@@ -229,6 +247,7 @@ import type { RendererPort } from '../../application/ports/RendererPort';
 import type { RecordingService } from '../../application/RecordingService';
 import type { ChordGroup } from '../../domain/ChordGroup';
 import { midiToNoteName, octaveOf } from '../../domain/Keyboard';
+import { type LoopMode, nextLoopMode } from '../../domain/LoopMode';
 import { type Song, songKeyRange } from '../../domain/Song';
 import ActionDrawer from './ActionDrawer.vue';
 import PracticePanel from './PracticePanel.vue';
@@ -240,12 +259,14 @@ interface Props {
   midiInput: MidiInputPort;
   song: Song;
   createRenderer: (canvas: HTMLCanvasElement) => RendererPort;
+  hasPlaylist?: boolean;
 }
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), { hasPlaylist: false });
 
 const emit = defineEmits<{
   (e: 'back'): void;
   (e: 'load-file', file: File): void;
+  (e: 'next-song'): void;
   (e: 'error', message: string): void;
 }>();
 
@@ -261,8 +282,43 @@ const drawerOpen = ref(false);
 // les morceaux qui n'utilisent qu'une portion du clavier).
 const fitToSong = ref(true);
 const showPracticePanel = ref(true);
-const loop = ref(false);
+const loopMode = ref<LoopMode>('off');
 const fullscreen = ref(false);
+
+const loopOptions: ReadonlyArray<{ value: LoopMode; label: string; icon: string }> = [
+  { value: 'off', label: 'Aucune', icon: '➡' },
+  { value: 'song', label: 'Morceau', icon: '🔂' },
+  { value: 'playlist', label: 'Bibliothèque', icon: '🔁' },
+];
+
+const loopIcon = computed(() => {
+  switch (loopMode.value) {
+    case 'song':
+      return '🔂';
+    case 'playlist':
+      return '🔁';
+    default:
+      return '➡';
+  }
+});
+
+const loopTitle = computed(() => {
+  switch (loopMode.value) {
+    case 'song':
+      return 'Boucle : morceau (cliquer pour : bibliothèque)';
+    case 'playlist':
+      return 'Boucle : bibliothèque (cliquer pour : aucune)';
+    default:
+      return 'Boucle : aucune (cliquer pour : morceau)';
+  }
+});
+
+function cycleLoopMode() {
+  let next = nextLoopMode(loopMode.value);
+  // Si la bibliothèque est vide, on saute le mode playlist
+  if (next === 'playlist' && !props.hasPlaylist) next = nextLoopMode(next);
+  loopMode.value = next;
+}
 const includeIntro = ref(true);
 
 const midiSupported = ref(props.midiInput.isSupported());
@@ -292,12 +348,15 @@ function renderLoop() {
   if (renderer) {
     const t = props.playback.getCurrentTime();
     currentTime.value = t;
-    if (!props.playback.isPlaying() && isPlaying.value) {
-      isPlaying.value = false;
+    // Synchro bidirectionnelle : la lecture peut être déclenchée depuis l'extérieur
+    // (transition playlist) ou s'arrêter toute seule.
+    const playing = props.playback.isPlaying();
+    if (playing !== isPlaying.value) {
+      isPlaying.value = playing;
     }
     // Le Transport Tone ne s'arrête pas tout seul à la fin du morceau : on le
-    // détecte ici pour repartir du début (en boucle si demandé, sinon pause).
-    if (props.playback.isPlaying() && t >= props.song.duration) {
+    // détecte ici pour décider quoi faire selon le mode de boucle.
+    if (playing && t >= props.song.duration) {
       handleSongEnd();
     }
     renderer.render({
@@ -311,12 +370,22 @@ function renderLoop() {
 }
 
 function handleSongEnd() {
-  props.playback.restart();
-  currentTime.value = 0;
-  if (loop.value) {
-    void props.playback.play().then(() => {
-      isPlaying.value = true;
-    });
+  switch (loopMode.value) {
+    case 'song':
+      props.playback.restart();
+      currentTime.value = 0;
+      void props.playback.play().then(() => {
+        isPlaying.value = true;
+      });
+      break;
+    case 'playlist':
+      // App.vue charge le morceau suivant et relance la lecture.
+      emit('next-song');
+      break;
+    default:
+      props.playback.restart();
+      currentTime.value = 0;
+      isPlaying.value = false;
   }
 }
 
@@ -488,7 +557,18 @@ function togglePractice(value: boolean) {
 watch(
   () => props.song,
   () => {
+    currentTime.value = 0;
     if (practiceActive.value) props.practice.stop();
+  },
+);
+
+// Si la bibliothèque devient vide (ou se réduit à 1 morceau) alors qu'on est
+// en mode playlist, on retombe sur le mode "morceau" pour ne pas se retrouver
+// avec un mode inopérant sélectionné.
+watch(
+  () => props.hasPlaylist,
+  (has) => {
+    if (!has && loopMode.value === 'playlist') loopMode.value = 'song';
   },
 );
 </script>

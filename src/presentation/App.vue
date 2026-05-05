@@ -26,8 +26,10 @@
         :midi-input="midiInput"
         :song="song"
         :create-renderer="container.createRenderer"
+        :has-playlist="hasPlaylist"
         @back="backToHome"
         @load-file="handleLoadFile"
+        @next-song="handleNextSong"
         @error="setError"
       />
     </Transition>
@@ -54,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import type { LibraryEntry } from '../application/ports/SongLibraryPort';
 import type { Song } from '../domain/Song';
 import FloatingMusicSymbols from './components/FloatingMusicSymbols.vue';
@@ -66,6 +68,7 @@ import { createAppContainer } from './composition';
 const container = createAppContainer();
 const playback = container.playback;
 const library = container.library;
+const playlist = container.playlist;
 const recording = container.recording;
 const practice = container.practice;
 const midiInput = container.midiInput;
@@ -75,10 +78,12 @@ const error = ref<string | null>(null);
 const isTranscribing = ref(false);
 const libraryEntries = ref<LibraryEntry[]>([]);
 const view = ref<'home' | 'player'>('home');
+const hasPlaylist = computed(() => libraryEntries.value.length > 1);
 
 onMounted(async () => {
   try {
     libraryEntries.value = await library.list();
+    playlist.setEntries(libraryEntries.value);
   } catch {
     /* bibliothèque indisponible — on n'expose rien */
   }
@@ -96,6 +101,8 @@ async function handleLoadFile(file: File) {
     const loaded = await playback.loadFromFile(file);
     song.value = loaded;
     view.value = 'player';
+    // Fichier utilisateur : on sort du parcours bibliothèque
+    playlist.setCurrent(null);
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Erreur de lecture du fichier';
   } finally {
@@ -103,14 +110,29 @@ async function handleLoadFile(file: File) {
   }
 }
 
-async function handleLoadLibrary(id: string) {
+async function handleLoadLibrary(id: string, options?: { autoPlay?: boolean }) {
   error.value = null;
   try {
     const file = await library.fetchFile(id);
-    await handleLoadFile(file);
+    const loaded = await playback.loadFromFile(file);
+    song.value = loaded;
+    view.value = 'player';
+    playlist.setCurrent(id);
+    if (options?.autoPlay) await playback.play();
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Impossible de charger le morceau';
   }
+}
+
+async function handleNextSong() {
+  const next = playlist.next();
+  if (!next) {
+    // Pas de bibliothèque : on rejoue le morceau courant
+    playback.restart();
+    await playback.play();
+    return;
+  }
+  await handleLoadLibrary(next.id, { autoPlay: true });
 }
 
 function backToHome() {

@@ -1,4 +1,5 @@
 import { PlaybackService } from '../application/PlaybackService';
+import { PlaylistService } from '../application/PlaylistService';
 import { PracticeService } from '../application/PracticeService';
 import type { MidiInputPort } from '../application/ports/MidiInputPort';
 import type { RendererPort } from '../application/ports/RendererPort';
@@ -22,6 +23,7 @@ import { ScreenWakeLockAdapter } from '../infrastructure/system/ScreenWakeLockAd
 export interface AppContainer {
   playback: PlaybackService;
   library: SongLibraryPort;
+  playlist: PlaylistService;
   recording: RecordingService;
   practice: PracticeService;
   midiInput: MidiInputPort;
@@ -43,6 +45,7 @@ export function createAppContainer(): AppContainer {
   const wakeLock = new ScreenWakeLockAdapter();
   const playback = new PlaybackService(parser, player, wakeLock);
   const library = new BundledSongLibrary();
+  const playlist = new PlaylistService();
   const midiInput = new WebMidiInputAdapter();
   const practice = new PracticeService(player, midiInput);
 
@@ -57,6 +60,7 @@ export function createAppContainer(): AppContainer {
   return {
     playback,
     library,
+    playlist,
     recording,
     practice,
     midiInput,
