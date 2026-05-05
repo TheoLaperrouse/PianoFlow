@@ -185,6 +185,37 @@
 
       <h3 class="text-sm font-display font-semibold mb-2 mt-4 text-text-muted">Affichage</h3>
       <div class="space-y-2 mb-4">
+        <div class="flex items-center justify-between gap-3 px-1 py-2">
+          <span class="text-sm">Mode</span>
+          <div class="flex items-center gap-1 rounded-lg bg-white/5 p-0.5 border border-white/10">
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md text-xs transition-colors"
+              :class="
+                rendererMode === 'falling'
+                  ? 'bg-violet-500/30 text-violet-100 border border-violet-400/50'
+                  : 'text-text-muted hover:text-white border border-transparent'
+              "
+              @click="rendererMode = 'falling'"
+            >
+              <span aria-hidden>🎹</span>
+              <span class="ml-1">Notes qui tombent</span>
+            </button>
+            <button
+              type="button"
+              class="px-2.5 py-1 rounded-md text-xs transition-colors"
+              :class="
+                rendererMode === 'sheet'
+                  ? 'bg-violet-500/30 text-violet-100 border border-violet-400/50'
+                  : 'text-text-muted hover:text-white border border-transparent'
+              "
+              @click="rendererMode = 'sheet'"
+            >
+              <span aria-hidden>🎼</span>
+              <span class="ml-1">Partition</span>
+            </button>
+          </div>
+        </div>
         <label class="flex items-center justify-between gap-3 px-1 py-2">
           <span class="text-sm">Anticipation</span>
           <div class="flex items-center gap-2">
@@ -243,7 +274,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import type { PlaybackService } from '../../application/PlaybackService';
 import type { PracticeService } from '../../application/PracticeService';
 import type { MidiInputDevice, MidiInputPort } from '../../application/ports/MidiInputPort';
-import type { RendererPort } from '../../application/ports/RendererPort';
+import type { RendererMode, RendererPort } from '../../application/ports/RendererPort';
 import type { RecordingService } from '../../application/RecordingService';
 import type { ChordGroup } from '../../domain/ChordGroup';
 import { midiToNoteName, octaveOf } from '../../domain/Keyboard';
@@ -258,7 +289,7 @@ interface Props {
   practice: PracticeService;
   midiInput: MidiInputPort;
   song: Song;
-  createRenderer: (canvas: HTMLCanvasElement) => RendererPort;
+  createRenderer: (canvas: HTMLCanvasElement, mode: RendererMode) => RendererPort;
   hasPlaylist?: boolean;
 }
 const props = withDefaults(defineProps<Props>(), { hasPlaylist: false });
@@ -320,6 +351,16 @@ function cycleLoopMode() {
   loopMode.value = next;
 }
 const includeIntro = ref(true);
+const rendererMode = ref<RendererMode>(loadPreferredMode());
+
+function loadPreferredMode(): RendererMode {
+  try {
+    const v = localStorage.getItem('pianoflow:rendererMode');
+    return v === 'sheet' ? 'sheet' : 'falling';
+  } catch {
+    return 'falling';
+  }
+}
 
 const midiSupported = ref(props.midiInput.isSupported());
 const devicesRequested = ref(false);
@@ -421,7 +462,7 @@ function exitFullscreen() {
 }
 
 onMounted(() => {
-  if (canvasRef.value) renderer = props.createRenderer(canvasRef.value);
+  if (canvasRef.value) renderer = props.createRenderer(canvasRef.value, rendererMode.value);
   rafId = requestAnimationFrame(renderLoop);
   window.addEventListener('keydown', onKeyDown);
   unsubscribePractice = props.practice.subscribe((state) => {
@@ -462,6 +503,21 @@ function restart() {
 }
 
 watch(rate, (r) => props.playback.setRate(r));
+
+// Switch de moteur de rendu : on jette l'ancien et on en instancie un nouveau
+// sur le même canvas. La préférence est persistée pour être restaurée au
+// prochain lancement.
+watch(rendererMode, (mode) => {
+  try {
+    localStorage.setItem('pianoflow:rendererMode', mode);
+  } catch {
+    /* localStorage indisponible (Safari privé) — la pref ne sera pas conservée */
+  }
+  if (canvasRef.value) {
+    renderer?.dispose();
+    renderer = props.createRenderer(canvasRef.value, mode);
+  }
+});
 
 watch(fullscreen, () => {
   // Le canvas est en flex-1 : toggler le chrome change la place dispo. On
