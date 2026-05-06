@@ -1,3 +1,12 @@
+## [1.3.0](https://github.com/TheoLaperrouse/PianoFlow/compare/v1.2.0...v1.3.0) (2026-05-06)
+
+### ✨ Fonctionnalités
+
+* **library:** replace demo songs with 5 viral public-domain pieces ([2043777](https://github.com/TheoLaperrouse/PianoFlow/commit/204377764283d5b1ec4cf77b3beef1607ef90661))
+* **player:** ghost trail of recently-passed notes; remove sheet music mode ([7ee9943](https://github.com/TheoLaperrouse/PianoFlow/commit/7ee9943a083d7dda8dc433c6d063bbb487cf17b5))
+* **player:** playlist loop mode ([b615be4](https://github.com/TheoLaperrouse/PianoFlow/commit/b615be4ae4c9f57966894efb237f1000ce857913))
+* **player:** sheet music renderer mode ([a3ca43d](https://github.com/TheoLaperrouse/PianoFlow/commit/a3ca43da3034aaf55c8b24cb12386d9ca8cfcb4e))
+
 ## [1.2.0](https://github.com/TheoLaperrouse/PianoFlow/compare/v1.1.0...v1.2.0) (2026-05-05)
 
 ### ✨ Fonctionnalités
