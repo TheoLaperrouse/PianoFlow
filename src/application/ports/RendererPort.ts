@@ -1,12 +1,5 @@
 import type { Song } from '../../domain/Song';
 
-/**
- * Modes de rendu disponibles.
- * - falling : notes qui tombent + clavier (renderer canvas piano-roll classique)
- * - sheet : notation musicale (portée à 5 lignes, clés sol/fa, défilement horizontal)
- */
-export type RendererMode = 'falling' | 'sheet';
-
 /** Plage de touches MIDI affichées. `null` = clavier complet (88 touches). */
 export interface KeyRange {
   readonly firstMidi: number;
@@ -21,6 +14,8 @@ export interface RenderState {
   readonly lookAhead: number;
   /** Restreint le clavier visible à une plage. `null` ou absent = 88 touches. */
   readonly keyRange?: KeyRange | null;
+  /** Trace des notes récemment passées au-dessus de la ligne de hit (effet "fantôme"). */
+  readonly ghostNotes?: boolean;
 }
 
 /** Description d'un cartouche de titre superposé pendant l'export vidéo. */

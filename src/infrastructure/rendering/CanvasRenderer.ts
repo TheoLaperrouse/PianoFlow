@@ -1,7 +1,10 @@
 import type { IntroOverlay, RendererPort, RenderState } from '../../application/ports/RendererPort';
 import { isBlackKey, midiToNoteName, octaveOf } from '../../domain/Keyboard';
-import { isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/PianoNote';
+import { endTime, isActiveAt, isVisibleInWindow, type PianoNote } from '../../domain/PianoNote';
 import { computeKeyboardLayout, type KeyboardLayout, noteCenterX } from './canvasGeometry';
+
+/** Durée de persistance d'une note "fantôme" après son passage (secondes). */
+const GHOST_DURATION = 0.5;
 
 const COLORS = {
   bgTop: '#08060f',
@@ -32,6 +35,9 @@ const COLORS = {
   middleC: '#ff3d57',
   octaveLabel: '#a8a4b6',
   noteLabel: 'rgba(255, 255, 255, 0.95)',
+  // Trace fantôme : violet doux, dégradé du clair vers le saturé.
+  ghostTop: '#c4b5fd',
+  ghostBottom: '#7c3aed',
 } as const;
 
 type ActiveMap = Map<number, 'left' | 'right'>;
@@ -133,7 +139,15 @@ export class CanvasRenderer implements RendererPort {
 
     paintBackground(ctx, width, height);
 
-    drawFallingNotes(ctx, layout, fallZoneHeight, notes, state.currentTime, state.lookAhead);
+    drawFallingNotes(
+      ctx,
+      layout,
+      fallZoneHeight,
+      notes,
+      state.currentTime,
+      state.lookAhead,
+      state.ghostNotes ?? false,
+    );
 
     paintHitLine(ctx, width, fallZoneHeight);
 
@@ -186,7 +200,8 @@ export class CanvasRenderer implements RendererPort {
       const sorted = [...active.entries()].sort(([a], [b]) => a - b);
       for (const [midi, hand] of sorted) activeKey += `${midi}${hand[0]},`;
     }
-    return `${t}|${ahead}|${range}|${activeKey}`;
+    const ghost = state.ghostNotes ? 'g' : '';
+    return `${t}|${ahead}|${range}|${activeKey}|${ghost}`;
   }
 }
 
@@ -382,12 +397,16 @@ function drawFallingNotes(
   notes: readonly PianoNote[],
   currentTime: number,
   lookAhead: number,
+  ghostsEnabled: boolean,
 ): void {
   const pxPerSecond = fallZoneHeight / lookAhead;
   const windowEnd = currentTime + lookAhead;
+  // En mode fantôme, on étire la fenêtre de visibilité dans le passé pour
+  // continuer à dessiner les notes qui viennent juste de franchir la ligne.
+  const windowStart = ghostsEnabled ? currentTime - GHOST_DURATION : currentTime;
 
   for (const note of notes) {
-    if (!isVisibleInWindow(note, currentTime, windowEnd)) continue;
+    if (!isVisibleInWindow(note, windowStart, windowEnd)) continue;
     if (note.midi < layout.firstMidi || note.midi > layout.lastMidi) continue;
 
     const isBlack = isBlackKey(note.midi);
@@ -409,6 +428,32 @@ function drawFallingNotes(
       const padRight = isBlackKey(note.midi + 1) ? half : layout.whiteWidth * 0.04;
       x = left + padLeft;
       w = Math.max(2, right - padRight - x);
+    }
+
+    const noteEnd = endTime(note);
+    const isGhost = ghostsEnabled && noteEnd < currentTime;
+
+    if (isGhost) {
+      // Note "passée" : on la fige juste au-dessus de la ligne de hit, on la
+      // fait rétrécir et fondre en violet pour évoquer un sillage.
+      const age = currentTime - noteEnd;
+      const fade = Math.max(0, 1 - age / GHOST_DURATION);
+      if (fade <= 0) continue;
+      const fullH = note.duration * pxPerSecond;
+      const h = Math.max(4, fullH * fade);
+      const yBottom = fallZoneHeight;
+      const yTop = yBottom - h;
+
+      ctx.save();
+      ctx.globalAlpha = fade * 0.55;
+      roundedRect(ctx, x, yTop, w, h, 7);
+      const grad = ctx.createLinearGradient(0, yTop, 0, yBottom);
+      grad.addColorStop(0, COLORS.ghostTop);
+      grad.addColorStop(1, COLORS.ghostBottom);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+      continue;
     }
 
     const yBottom = fallZoneHeight - (note.time - currentTime) * pxPerSecond;

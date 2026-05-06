@@ -2,7 +2,7 @@ import { PlaybackService } from '../application/PlaybackService';
 import { PlaylistService } from '../application/PlaylistService';
 import { PracticeService } from '../application/PracticeService';
 import type { MidiInputPort } from '../application/ports/MidiInputPort';
-import type { RendererMode, RendererPort } from '../application/ports/RendererPort';
+import type { RendererPort } from '../application/ports/RendererPort';
 import type { SongLibraryPort } from '../application/ports/SongLibraryPort';
 import { RecordingService } from '../application/RecordingService';
 import { TonePlayer } from '../infrastructure/audio/TonePlayer';
@@ -13,7 +13,6 @@ import { CompositeSongParser } from '../infrastructure/parsing/CompositeSongPars
 import { MidiSongParser } from '../infrastructure/parsing/MidiSongParser';
 import { MediaRecorderAdapter } from '../infrastructure/recording/MediaRecorderAdapter';
 import { CanvasRenderer } from '../infrastructure/rendering/CanvasRenderer';
-import { SheetMusicRenderer } from '../infrastructure/rendering/sheetMusic/SheetMusicRenderer';
 import { ScreenWakeLockAdapter } from '../infrastructure/system/ScreenWakeLockAdapter';
 
 /**
@@ -28,7 +27,7 @@ export interface AppContainer {
   recording: RecordingService;
   practice: PracticeService;
   midiInput: MidiInputPort;
-  createRenderer: (canvas: HTMLCanvasElement, mode: RendererMode) => RendererPort;
+  createRenderer: (canvas: HTMLCanvasElement) => RendererPort;
 }
 
 export function createAppContainer(): AppContainer {
@@ -65,9 +64,8 @@ export function createAppContainer(): AppContainer {
     recording,
     practice,
     midiInput,
-    createRenderer: (canvas, mode) => {
-      activeRenderer =
-        mode === 'sheet' ? new SheetMusicRenderer(canvas) : new CanvasRenderer(canvas);
+    createRenderer: (canvas) => {
+      activeRenderer = new CanvasRenderer(canvas);
       return activeRenderer;
     },
   };
