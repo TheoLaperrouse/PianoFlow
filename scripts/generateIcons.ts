@@ -25,6 +25,9 @@ const TARGETS: Target[] = [
   { name: 'icon-512.png', size: 512 },
   { name: 'icon-maskable-512.png', size: 512, inset: 0.1 },
   { name: 'apple-touch-icon.png', size: 180 },
+  // Avatar YouTube : 800×800, recadré en cercle dans l'UI. Marge intérieure
+  // de 6 % pour que les éléments du logo ne soient pas rognés par le cercle.
+  { name: 'youtube-avatar.png', size: 800, inset: 0.06 },
 ];
 
 const svg = readFileSync(SVG_PATH);
@@ -44,7 +47,13 @@ for (const target of TARGETS) {
       background: { r: 15, g: 13, b: 26, alpha: 1 },
     });
   }
-  const buffer = await pipeline.png().toBuffer();
+  // `flatten` aplatit la transparence des coins arrondis du SVG sur le fond
+  // sombre — sinon le PNG affiche du blanc/transparent autour du carré arrondi
+  // (visible si l'image n'est pas recadrée en cercle, ex. icône hors PWA).
+  const buffer = await pipeline
+    .flatten({ background: { r: 15, g: 13, b: 26 } })
+    .png()
+    .toBuffer();
   writeFileSync(resolve(OUT_DIR, target.name), buffer);
   console.log(`✓ ${target.name} (${target.size}×${target.size})`);
 }
